@@ -164,10 +164,26 @@ export function tasksFor(kid, date) {
     if (t && !out[t.id]) out[t.id] = { ...t, done: false, virtual: true };
   }
   if (date >= todayKey(-1)) {
+    const dow = dowOf(date);
     for (const h of vals(kid.habits)) {
       if (!h.active) continue;
+      const days = Array.isArray(h.days) && h.days.length ? h.days.map(Number) : null;
+      if (days && !days.includes(dow)) continue;
+      if ((h.from && date < h.from) || (h.until && date > h.until)) continue;
       const id = `habit_${h.id}`;
-      if (!out[id]) out[id] = { id, title: h.title, subject: '생활', talents: h.talents || REWARDS.habit, source: 'habit', order: 9, done: false, virtual: true };
+      if (out[id]) continue;
+      const t = { id, title: h.title, subject: h.subject || '생활', note: h.note || '', talents: h.talents ?? REWARDS.habit, source: 'habit', order: h.order ?? 9, done: false, virtual: true };
+      // 주 1회 과제: 같은 주(월~일)의 지정 요일 중 하루만 하면 완료
+      if (h.weekly && days) {
+        const monday = addDays(date, -((dow + 6) % 7));
+        for (let i = 0; i < 7; i++) {
+          const d = addDays(monday, i);
+          if (d === date) continue;
+          const other = ((kid.tasks || {})[d] || {})[id];
+          if (other && other.done) { t.done = true; t.lockedDone = true; t.note = `이번 주 ${['일','월','화','수','목','금','토'][dowOf(d)]}요일에 완료`; break; }
+        }
+      }
+      out[id] = t;
     }
   }
   return Object.values(out)
@@ -176,6 +192,7 @@ export function tasksFor(kid, date) {
 }
 
 export function toggleTask(kidId, date, task) {
+  if (task.lockedDone) return { done: true, blocked: true, msg: '이번 주에 이미 완료했어요!' };
   const kid = getKid(kidId);
   const path = `kids/${kidId}/tasks/${date}/${task.id}`;
   const ledgerId = `task_${date.replace(/-/g, '')}_${task.id}`;
