@@ -251,7 +251,8 @@ export function creativePicks(kid, date) {
   const day = (kid.creative || {})[date] || {};
   if (Array.isArray(day.picks) && day.picks.length) return day.picks.map((id) => CREATIVE.find((c) => c.id === id)).filter(Boolean);
   const grade = kid.profile?.grade || 3;
-  const pool = CREATIVE.filter((c) => grade >= c.g[0] && grade <= c.g[1]);
+  const dow = dowOf(date);
+  const pool = CREATIVE.filter((c) => grade >= c.g[0] && grade <= c.g[1] && (!c.days || c.days.includes(dow)));
   const rnd = seededRandom(`${kid.id}|${date}|${day.seed || 0}`);
   const cats = shuffle([...new Set(pool.map((c) => c.cat))], rnd);
   const picks = [];
@@ -269,7 +270,8 @@ export function rerollCreative(kidId, date) {
   const current = creativePicks(kid, date);
   const keep = current.filter((c) => done[c.id]);
   const grade = kid.profile?.grade || 3;
-  const pool = shuffle(CREATIVE.filter((c) => grade >= c.g[0] && grade <= c.g[1] && !current.some((x) => x.id === c.id)));
+  const dow = dowOf(date);
+  const pool = shuffle(CREATIVE.filter((c) => grade >= c.g[0] && grade <= c.g[1] && (!c.days || c.days.includes(dow)) && !current.some((x) => x.id === c.id)));
   const picks = [...keep.map((c) => c.id)];
   for (const c of pool) {
     if (picks.length >= 3) break;
