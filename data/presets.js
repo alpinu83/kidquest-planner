@@ -41,7 +41,7 @@ export function newKid(id, name, grade, colorId, vocabLevel, species) {
       [`welcome_${id}`]: { id: `welcome_${id}`, ts: now, date: getTodayKey(0), kind: 'bonus', talents: 10, reason: 'KidQuest 2.0 오픈 선물' }
     },
     habits: {
-      h_bag: { id: 'h_bag', title: '내일 가방·준비물 스스로 챙기기', talents: 1, active: true },
+      h_bag: { id: 'h_bag', title: '내일 가방·준비물 스스로 챙기기', talents: 1, active: true, days: [0, 1, 2, 3, 4] }, // 금·토는 다음 날 학교 안 감
       h_read: { id: 'h_read', title: '책 20분 읽기', talents: 1, active: true }
     }
   };
@@ -50,7 +50,7 @@ export function newKid(id, name, grade, colorId, vocabLevel, species) {
 export function createSeed() {
   return {
     meta: { version: 2, createdAt: Date.now() },
-    settings: { pin: '1234', cityId: 'seoul' },
+    settings: { pin: '1234', cityId: 'seoul', push: { time: '21:00', enabled: true } },
     kids: {
       bella: newKid('bella', 'Bella', 6, 'violet', 4, 'unicorn'),
       wanny: newKid('wanny', 'Wanny', 3, 'sky', 2, 'dragon')

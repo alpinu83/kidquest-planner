@@ -120,7 +120,7 @@ export const CREATIVE = [
   // 🏠 집안일 영웅
   { id: 'c_hm1', cat: 'home', type: 'photo', g: [3, 6], title: '책상 정리 Before/After', desc: '정리 후 내 책상 사진을 찍어 인증하세요.' },
   { id: 'c_hm2', cat: 'home', type: 'check', g: [3, 6], title: '식사 준비 돕기', desc: '수저 놓기나 설거지 돕기 중 하나!' },
-  { id: 'c_hm3', cat: 'home', type: 'check', g: [3, 6], title: '내일 가방 스스로 싸기', desc: '시간표 보고 준비물까지 스스로 챙기기.' },
+  { id: 'c_hm3', cat: 'home', type: 'check', g: [3, 6], days: [0, 1, 2, 3, 4], title: '내일 가방 스스로 싸기', desc: '시간표 보고 준비물까지 스스로 챙기기.' },
   { id: 'c_hm4', cat: 'home', type: 'check', g: [3, 6], title: '빨래 개기 도전', desc: '내 옷을 직접 개서 서랍에 넣기.' },
   { id: 'c_hm5', cat: 'home', type: 'photo', g: [4, 6], title: '요리 보조 셰프', desc: '가족과 간단한 요리(샌드위치, 계란 요리 등)를 만들고 사진 찍기.' }
 ];
