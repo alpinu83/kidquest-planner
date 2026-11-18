@@ -1,0 +1,405 @@
+// 도메인 로직: 달란트 장부, 펫 성장, 숙제/미션/단어 보상, 연속 기록
+import * as db from './store.js';
+import { todayKey, addDays, dowOf, uid, vals, sum, seededRandom, shuffle, daysBetween } from './util.js';
+import { MAX_PET_XP, stageForXp, speciesById } from '../data/pets.js';
+import { FOODS, FAV_BONUS, REWARDS } from '../data/shop.js';
+import { CREATIVE } from '../data/missions.js';
+import { VOCAB_WORDS } from '../data/vocab.js';
+import { VOCAB_EXTRA } from '../data/vocab-extra.js';
+
+const S = () => db.getState();
+export const kidPath = (kidId, rest = '') => `kids/${kidId}${rest ? '/' + rest : ''}`;
+
+// ---------- 기본 조회 ----------
+export function kidsList() {
+  const kids = S().kids || {};
+  return Object.entries(kids)
+    .filter(([, k]) => k && k.profile)
+    .map(([id, k]) => ({ id, ...k }))
+    .sort((a, b) => (b.profile.grade || 0) - (a.profile.grade || 0));
+}
+export const getKid = (kidId) => {
+  const k = (S().kids || {})[kidId];
+  return k ? { id: kidId, ...k } : null;
+};
+export const settings = () => S().settings || { pin: '1234', cityId: 'seoul' };
+
+export function ledgerList(kid) {
+  return vals(kid.ledger).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+}
+export function talentBalance(kid) {
+  return sum(vals(kid.ledger), (e) => e.talents);
+}
+export function talentsEarnedOn(kid, date) {
+  return sum(vals(kid.ledger).filter((e) => e.date === date && e.talents > 0 && e.kind !== 'feed'), (e) => e.talents);
+}
+
+// ---------- 펫 ----------
+export function petXp(kid, petId) {
+  return Math.max(0, Math.min(MAX_PET_XP, sum(vals(kid.ledger).filter((e) => e.petId === petId), (e) => e.petXp)));
+}
+export function petsOf(kid) {
+  return vals(kid.pets).map((p) => {
+    const xp = petXp(kid, p.id);
+    return { ...p, xp, stage: stageForXp(xp).stage, species: speciesById(p.species) };
+  }).sort((a, b) => (a.adoptedAt || 0) - (b.adoptedAt || 0));
+}
+export function activePet(kid) {
+  const list = petsOf(kid);
+  return list.find((p) => p.id === kid.activePet) || list[list.length - 1] || null;
+}
+export function petMood(pet) {
+  if (!pet) return 'ok';
+  const h = new Date().getHours();
+  if (h >= 22 || h < 6) return 'sleepy';
+  if (!pet.lastFed) return pet.stage === 0 ? 'ok' : 'hungry';
+  const hours = (Date.now() - pet.lastFed) / 3600000;
+  if (hours < 12) return 'happy';
+  if (hours < 30) return 'ok';
+  return 'hungry';
+}
+
+export function feedPet(kidId, foodId) {
+  const kid = getKid(kidId);
+  const pet = activePet(kid);
+  const food = FOODS.find((f) => f.id === foodId);
+  if (!kid || !pet || !food) return { ok: false, msg: '먹이를 찾을 수 없어요.' };
+  if (pet.xp >= MAX_PET_XP) return { ok: false, msg: '이미 전설이 되었어요! 새 알을 입양해 주세요.' };
+  const bal = talentBalance(kid);
+  if (bal < food.cost) return { ok: false, msg: `달란트가 ${food.cost - bal}개 부족해요. 미션을 완료해 모아 보세요!` };
+  const fav = pet.species.fav === food.id;
+  let gain = Math.round(food.xp * (fav ? FAV_BONUS : 1));
+  gain = Math.min(gain, MAX_PET_XP - pet.xp);
+  const prevStage = pet.stage;
+  const nextXp = pet.xp + gain;
+  const nextStage = stageForXp(nextXp).stage;
+  const id = uid('feed');
+  const updates = {
+    [`kids/${kidId}/ledger/${id}`]: { id, ts: Date.now(), date: todayKey(0), kind: 'feed', talents: -food.cost, petId: pet.id, petXp: gain, reason: `${food.name} 먹이 주기${fav ? ' (최애 간식 x1.5)' : ''}` },
+    [`kids/${kidId}/pets/${pet.id}/lastFed`]: Date.now()
+  };
+  if (nextXp >= MAX_PET_XP) updates[`kids/${kidId}/pets/${pet.id}/legendAt`] = Date.now();
+  db.multi(updates);
+  return { ok: true, gain, fav, prevStage, nextStage, evolved: nextStage > prevStage, legendary: nextXp >= MAX_PET_XP, pet };
+}
+
+export function adoptPet(kidId, speciesId, name = '') {
+  const id = uid('pet');
+  db.multi({
+    [`kids/${kidId}/pets/${id}`]: { id, species: speciesId, name, adoptedAt: Date.now() },
+    [`kids/${kidId}/activePet`]: id
+  });
+  return id;
+}
+export function renamePet(kidId, petId, name) {
+  db.set(`kids/${kidId}/pets/${petId}/name`, name.slice(0, 12));
+}
+export function setActivePet(kidId, petId) {
+  db.set(`kids/${kidId}/activePet`, petId);
+}
+
+// ---------- 연속 기록 ----------
+function streakUpdates(kid, date) {
+  const st = kid.stats || {};
+  if (date !== todayKey(0) || st.lastDate === date) return {};
+  const streak = st.lastDate === addDays(date, -1) ? (st.streak || 0) + 1 : 1;
+  const out = { [`kids/${kid.id}/stats`]: { streak, lastDate: date, best: Math.max(st.best || 0, streak) } };
+  if (streak > 0 && streak % 7 === 0) {
+    const id = `streak_${date}`;
+    out[`kids/${kid.id}/ledger/${id}`] = { id, ts: Date.now(), date, kind: 'bonus', talents: REWARDS.streak7, reason: `${streak}일 연속 달성 보너스` };
+  }
+  return out;
+}
+export function streakOf(kid) {
+  const st = kid.stats || {};
+  if (!st.lastDate) return 0;
+  if (st.lastDate === todayKey(0) || st.lastDate === todayKey(-1)) return st.streak || 0;
+  return 0;
+}
+
+function earn(kid, date, id, talents, reason, kind = 'earn', extra = {}) {
+  return {
+    [`kids/${kid.id}/ledger/${id}`]: { id, ts: Date.now(), date, kind, talents, reason, ...extra },
+    ...streakUpdates(kid, date)
+  };
+}
+
+// ---------- 숙제 (문제집 자동 배정 + 습관 + 개별) ----------
+function countSteps(fromKey, toKey, days) {
+  let n = 0;
+  let cur = fromKey;
+  while (cur < toKey) {
+    if (days.includes(dowOf(cur))) n++;
+    cur = addDays(cur, 1);
+  }
+  return n;
+}
+export function workbookTaskFor(wb, date) {
+  const days = (wb.days || []).map(Number);
+  if (!wb.active || !days.includes(dowOf(date))) return null;
+  const base = wb.baseDate || todayKey(0);
+  if (date < base) return null;
+  const steps = countSteps(base, date, days);
+  const start = Number(wb.startPage) + steps * Number(wb.pagesPerDay);
+  if (start > Number(wb.totalPages)) return null;
+  const end = Math.min(Number(wb.totalPages), start + Number(wb.pagesPerDay) - 1);
+  return {
+    id: `wb_${wb.id}_${date.replace(/-/g, '')}`,
+    title: `${wb.title} ${start === end ? `p.${start}` : `p.${start}~${end}`}`,
+    subject: wb.subject,
+    talents: wb.talents || REWARDS.workbook,
+    source: 'workbook',
+    wbId: wb.id,
+    order: 0
+  };
+}
+
+// 날짜의 할 일 목록 (저장된 숙제 + 문제집 규칙 + 습관을 합쳐서 보여줌)
+export function tasksFor(kid, date) {
+  const stored = (kid.tasks || {})[date] || {};
+  const out = {};
+  for (const [id, t] of Object.entries(stored)) if (t) out[id] = { ...t, id };
+  for (const wb of vals(kid.workbooks)) {
+    const t = workbookTaskFor(wb, date);
+    if (t && !out[t.id]) out[t.id] = { ...t, done: false, virtual: true };
+  }
+  if (date >= todayKey(-1)) {
+    for (const h of vals(kid.habits)) {
+      if (!h.active) continue;
+      const id = `habit_${h.id}`;
+      if (!out[id]) out[id] = { id, title: h.title, subject: '생활', talents: h.talents || REWARDS.habit, source: 'habit', order: 9, done: false, virtual: true };
+    }
+  }
+  return Object.values(out)
+    .filter((t) => !t.deleted)
+    .sort((a, b) => (a.done - b.done) || ((a.order ?? 5) - (b.order ?? 5)) || String(a.title).localeCompare(String(b.title)));
+}
+
+export function toggleTask(kidId, date, task) {
+  const kid = getKid(kidId);
+  const path = `kids/${kidId}/tasks/${date}/${task.id}`;
+  const ledgerId = `task_${date.replace(/-/g, '')}_${task.id}`;
+  const reward = task.talents === undefined || task.talents === null || task.talents === '' ? REWARDS.homework : Math.max(0, Number(task.talents) || 0);
+  if (!task.done) {
+    const { virtual, ...rest } = task;
+    const updates = {
+      [path]: { ...rest, done: true, doneAt: Date.now() },
+      ...earn(kid, date, ledgerId, reward, `${task.subject ? '[' + task.subject + '] ' : ''}${task.title}`)
+    };
+    db.multi(updates);
+    // 오늘 모두 완료 보너스
+    const after = tasksFor(getKid(kidId), date);
+    const allDone = after.length > 0 && after.every((t) => t.done);
+    const acId = `allclear_${date.replace(/-/g, '')}`;
+    if (allDone && !(getKid(kidId).ledger || {})[acId]) {
+      db.set(`kids/${kidId}/ledger/${acId}`, { id: acId, ts: Date.now(), date, kind: 'bonus', talents: REWARDS.allClear, reason: '오늘 할 일 모두 완료 보너스' });
+      return { done: true, talents: reward, allClear: true };
+    }
+    return { done: true, talents: reward };
+  }
+  const entry = (kid.ledger || {})[ledgerId];
+  if (entry && talentBalance(kid) < entry.talents) {
+    return { done: true, blocked: true, msg: '이미 달란트를 사용해서 완료를 취소할 수 없어요.' };
+  }
+  const acId = `allclear_${date.replace(/-/g, '')}`;
+  const updates = { [`kids/${kidId}/ledger/${ledgerId}`]: null };
+  if (task.source === 'workbook' || task.source === 'habit') updates[path] = null;
+  else { updates[`${path}/done`] = false; updates[`${path}/doneAt`] = null; }
+  if ((kid.ledger || {})[acId] && talentBalance(kid) - (entry?.talents || 0) >= REWARDS.allClear) updates[`kids/${kidId}/ledger/${acId}`] = null;
+  db.multi(updates);
+  return { done: false };
+}
+
+export function addTask(kidId, date, { title, subject = '숙제', talents = REWARDS.homework, note = '' }) {
+  const id = uid('t');
+  db.set(`kids/${kidId}/tasks/${date}/${id}`, { id, title, subject, talents: Number(talents) || 1, note, source: 'manual', done: false, createdAt: Date.now(), order: 3 });
+  return id;
+}
+export function deleteTask(kidId, date, task) {
+  if (task.virtual) db.set(`kids/${kidId}/tasks/${date}/${task.id}`, { id: task.id, deleted: true });
+  else db.remove(`kids/${kidId}/tasks/${date}/${task.id}`);
+}
+export function postponeTask(kidId, date, task) {
+  const next = addDays(date, 1);
+  const { virtual, ...rest } = task;
+  const id = uid('t');
+  db.multi({
+    [`kids/${kidId}/tasks/${next}/${id}`]: { ...rest, id, title: rest.title.startsWith('[이월]') ? rest.title : `[이월] ${rest.title}`, done: false, source: 'manual', order: 2 },
+    [`kids/${kidId}/tasks/${date}/${task.id}`]: task.virtual ? { id: task.id, deleted: true } : null
+  });
+}
+
+// ---------- 창의 미션 ----------
+export function creativePicks(kid, date) {
+  const day = (kid.creative || {})[date] || {};
+  if (Array.isArray(day.picks) && day.picks.length) return day.picks.map((id) => CREATIVE.find((c) => c.id === id)).filter(Boolean);
+  const grade = kid.profile?.grade || 3;
+  const pool = CREATIVE.filter((c) => grade >= c.g[0] && grade <= c.g[1]);
+  const rnd = seededRandom(`${kid.id}|${date}|${day.seed || 0}`);
+  const cats = shuffle([...new Set(pool.map((c) => c.cat))], rnd);
+  const picks = [];
+  for (const cat of cats) {
+    const opts = pool.filter((c) => c.cat === cat);
+    picks.push(opts[Math.floor(rnd() * opts.length)]);
+    if (picks.length === 3) break;
+  }
+  return picks;
+}
+export function rerollCreative(kidId, date) {
+  const kid = getKid(kidId);
+  const day = (kid.creative || {})[date] || {};
+  const done = day.done || {};
+  const current = creativePicks(kid, date);
+  const keep = current.filter((c) => done[c.id]);
+  const grade = kid.profile?.grade || 3;
+  const pool = shuffle(CREATIVE.filter((c) => grade >= c.g[0] && grade <= c.g[1] && !current.some((x) => x.id === c.id)));
+  const picks = [...keep.map((c) => c.id)];
+  for (const c of pool) {
+    if (picks.length >= 3) break;
+    if (!picks.some((id) => CREATIVE.find((x) => x.id === id)?.cat === c.cat)) picks.push(c.id);
+  }
+  db.update(`kids/${kidId}/creative/${date}`, { picks, rerolls: (day.rerolls || 0) + 1 });
+}
+export function creativeDone(kid, date, missionId) {
+  return (((kid.creative || {})[date] || {}).done || {})[missionId] || null;
+}
+export function completeCreative(kidId, date, mission, payload = {}) {
+  const kid = getKid(kidId);
+  const id = `cr_${date.replace(/-/g, '')}_${mission.id}`;
+  const day = (kid.creative || {})[date] || {};
+  const picks = Array.isArray(day.picks) && day.picks.length ? day.picks : creativePicks(kid, date).map((c) => c.id);
+  db.multi({
+    [`kids/${kidId}/creative/${date}/picks`]: picks,
+    [`kids/${kidId}/creative/${date}/done/${mission.id}`]: { at: Date.now(), title: mission.title, cat: mission.cat, type: mission.type, ...payload },
+    ...earn(kid, date, id, REWARDS.creative, `[창의] ${mission.title}`)
+  });
+  return REWARDS.creative;
+}
+export function likeCreative(kidId, date, missionId, comment = '') {
+  const kid = getKid(kidId);
+  const id = `like_${date.replace(/-/g, '')}_${missionId}`;
+  const updates = {
+    [`kids/${kidId}/creative/${date}/done/${missionId}/liked`]: true,
+    [`kids/${kidId}/creative/${date}/done/${missionId}/comment`]: comment || null
+  };
+  if (!(kid.ledger || {})[id]) updates[`kids/${kidId}/ledger/${id}`] = { id, ts: Date.now(), date: todayKey(0), kind: 'bonus', talents: 1, reason: '부모님 하트 칭찬 ❤' };
+  db.multi(updates);
+}
+
+// ---------- 영단어 (라이트너 간격 반복) ----------
+export const BOX_INTERVAL = [0, 1, 2, 4, 7, 14, 30];
+export function allWords() {
+  const custom = vals(S().customWords).map((w) => ({ ...w, custom: true }));
+  return [...VOCAB_WORDS, ...VOCAB_EXTRA, ...custom];
+}
+export function wordsForLevel(level) {
+  return allWords().filter((w) => Number(w.level) === Number(level));
+}
+export function wordState(kid, wordId) {
+  return ((kid.vocab || {}).words || {})[wordId] || null;
+}
+export function vocabStats(kid) {
+  const states = (kid.vocab || {}).words || {};
+  const today = todayKey(0);
+  const list = Object.values(states);
+  const boxes = [0, 0, 0, 0, 0, 0, 0];
+  list.forEach((s) => { boxes[Math.min(6, s.b || 0)]++; });
+  return {
+    learned: list.length,
+    mastered: list.filter((s) => (s.b || 0) >= 5).length,
+    due: list.filter((s) => s.d && s.d <= today && (s.b || 0) < 6).length,
+    boxes,
+    todayDone: !!(((kid.vocab || {}).days || {})[today] || {}).daily
+  };
+}
+export function buildDailySession(kid) {
+  const today = todayKey(0);
+  const states = (kid.vocab || {}).words || {};
+  const all = allWords();
+  const byId = new Map(all.map((w) => [w.id, w]));
+  const due = Object.entries(states)
+    .filter(([, s]) => s.d && s.d <= today && (s.b || 0) < 6)
+    .sort((a, b) => (a[1].b || 0) - (b[1].b || 0))
+    .map(([id]) => byId.get(id))
+    .filter(Boolean)
+    .slice(0, 12);
+  const level = kid.profile?.vocabLevel || 2;
+  const newCount = (kid.profile?.grade || 3) >= 5 ? 10 : 8;
+  let pool = shuffle(all.filter((w) => Number(w.level) === Number(level) && !states[w.id]));
+  if (pool.length < newCount) pool = pool.concat(shuffle(all.filter((w) => Number(w.level) === Number(level) + 1 && !states[w.id])));
+  const fresh = pool.slice(0, newCount);
+  return { fresh, due };
+}
+export function recordWord(kidId, wordId, correct) {
+  const kid = getKid(kidId);
+  const cur = wordState(kid, wordId) || { b: 0, c: 0, w: 0 };
+  const b = correct ? Math.min(6, (cur.b || 0) + 1) : 1;
+  const next = { b, c: (cur.c || 0) + (correct ? 1 : 0), w: (cur.w || 0) + (correct ? 0 : 1), d: addDays(todayKey(0), BOX_INTERVAL[b] || 1), t: Date.now() };
+  db.set(`kids/${kidId}/vocab/words/${wordId}`, next);
+  return next;
+}
+export function finishDailyVocab(kidId, correct, total) {
+  const kid = getKid(kidId);
+  const today = todayKey(0);
+  const day = ((kid.vocab || {}).days || {})[today] || {};
+  if (day.daily) return 0;
+  const perfect = total > 0 && correct === total;
+  const talents = REWARDS.vocabDaily + (perfect ? REWARDS.vocabPerfect : 0);
+  db.multi({
+    [`kids/${kidId}/vocab/days/${today}`]: { ...day, daily: true, correct, total, at: Date.now() },
+    ...earn(kid, today, `vocab_${today.replace(/-/g, '')}`, talents, `오늘의 영단어 ${correct}/${total}${perfect ? ' (만점!)' : ''}`)
+  });
+  return talents;
+}
+export function finishGame(kidId, gameName, score) {
+  const kid = getKid(kidId);
+  const today = todayKey(0);
+  const day = ((kid.vocab || {}).days || {})[today] || {};
+  const games = day.games || 0;
+  const updates = { [`kids/${kidId}/vocab/days/${today}/games`]: games + 1 };
+  let talents = 0;
+  if (games < REWARDS.gameDailyCap) {
+    talents = REWARDS.game;
+    Object.assign(updates, earn(kid, today, `game_${today.replace(/-/g, '')}_${games + 1}`, talents, `${gameName} ${score}`));
+  }
+  db.multi(updates);
+  return talents;
+}
+export function weakWords(kid, limit = 10) {
+  const states = (kid.vocab || {}).words || {};
+  const byId = new Map(allWords().map((w) => [w.id, w]));
+  return Object.entries(states)
+    .filter(([, s]) => (s.w || 0) > 0)
+    .sort((a, b) => (b[1].w - b[1].c * 0.3) - (a[1].w - a[1].c * 0.3))
+    .slice(0, limit)
+    .map(([id, s]) => ({ ...byId.get(id), ...s }))
+    .filter((w) => w.word);
+}
+
+// ---------- 부모: 칭찬/감점 ----------
+export function grantTalents(kidId, talents, reason, alsoPet = false) {
+  const kid = getKid(kidId);
+  const id = uid(talents >= 0 ? 'praise' : 'penalty');
+  const entry = { id, ts: Date.now(), date: todayKey(0), kind: talents >= 0 ? 'bonus' : 'penalty', talents: Number(talents), reason, by: 'parent' };
+  if (alsoPet && talents < 0) {
+    const pet = activePet(kid);
+    if (pet) { entry.petId = pet.id; entry.petXp = Number(talents) * 10; }
+  }
+  db.set(`kids/${kidId}/ledger/${id}`, entry);
+}
+
+// ---------- 주간 통계 ----------
+export function weekSummary(kid, days = 7) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = todayKey(-i);
+    const list = tasksFor(kid, d);
+    out.push({
+      date: d,
+      total: list.length,
+      done: list.filter((t) => t.done).length,
+      talents: talentsEarnedOn(kid, d)
+    });
+  }
+  return out;
+}
