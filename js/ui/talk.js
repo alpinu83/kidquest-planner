@@ -25,11 +25,30 @@ export function TalkView({ me }) {
   const inputRef = useRef(null);
   const [text, setText] = useState('');
   const [stickers, setStickers] = useState(false);
+  const [away, setAway] = useState(false); // 예전 메시지 보는 중 (아래에서 멀리 올라감)
+  const [newCount, setNewCount] = useState(0);
   const lastTs = msgs.length ? msgs[msgs.length - 1].ts : 0;
+  const lastBy = msgs.length ? msgs[msgs.length - 1].by : null;
+  const first = useRef(true);
+
+  const distFromBottom = () => { const el = listRef.current; return el ? el.scrollHeight - el.scrollTop - el.clientHeight : 0; };
+  function toBottom(smooth = true) {
+    const el = listRef.current;
+    if (!el) return;
+    if (smooth && el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); else el.scrollTop = el.scrollHeight;
+    setNewCount(0);
+    setAway(false);
+  }
+  function onScroll() {
+    const far = distFromBottom() > 240;
+    if (far !== away) setAway(far);
+    if (!far && newCount) setNewCount(0);
+  }
 
   useEffect(() => {
-    const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    // 처음 열 때, 내가 보낸 메시지, 또는 맨 아래 근처에 있을 때만 자동으로 내려감
+    if (first.current || lastBy === me || distFromBottom() < 240) { toBottom(!first.current); first.current = false; }
+    else setNewCount((n) => n + 1);
     if (document.visibilityState === 'visible') markRead(me);
   }, [lastTs, me]);
   useEffect(() => {
@@ -90,10 +109,11 @@ export function TalkView({ me }) {
       <div class="grow"><b>우리 가족 톡</b><div class="tiny muted">${ids.map((id) => memberInfo(id).name).join(' · ')}</div></div>
       <div class="tiny muted">나: <b style=${`color:${memberInfo(me).color}`}>${memberInfo(me).name}</b></div>
     </div>
-    <div class="talk-list" ref=${listRef}>
+    <div class="talk-list" ref=${listRef} onScroll=${onScroll}>
       ${msgs.length === 0 && html`<div class="empty"><img src=${E('Speech balloon')} alt="" /><div class="bold" style="color:var(--text-2)">첫 메시지를 보내 보세요!</div><div class="small">가족 모두가 같은 방에서 이야기해요</div></div>`}
       ${rows}
     </div>
+    ${(away || newCount > 0) && html`<button class=${'talk-down' + (newCount ? ' has-new' : '')} aria-label="최근 메시지로" onClick=${() => toBottom(true)}>${newCount ? html`<span>새 메시지 ${newCount}</span>` : ''}<${Icon} name="chevron-down" size=${22} stroke=${2.6} /></button>`}
     ${stickers && html`<div class="talk-stickers">${STICKERS.map((s) => html`<button key=${s} onClick=${() => sendSticker(s)}><img src=${E(s)} alt="" /></button>`)}</div>`}
     <div class="talk-input">
       <button class=${'icon-btn' + (stickers ? ' on' : '')} aria-label="스티커" onClick=${() => setStickers(!stickers)}><${Icon} name="smile" size=${22} /></button>

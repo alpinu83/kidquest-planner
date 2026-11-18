@@ -3,6 +3,7 @@ import { PetStage, EvolutionOverlay, EvolutionLine, MoodBadge, petDisplayName } 
 import { TaskList, DateNav, CreativeCards, MissionModal } from './missions.js';
 import { VocabTab } from './vocab.js';
 import { TalkView, Avatar } from './talk.js';
+import { PetWorld } from './world.js';
 import * as M from '../model.js';
 import { unreadCount } from '../members.js';
 import { FOODS } from '../../data/shop.js';
@@ -31,7 +32,7 @@ export function KidApp({ kidId, tab, setTab, onExit, onParent }) {
   const pet = M.activePet(kid);
   const bal = M.talentBalance(kid);
   const streak = M.streakOf(kid);
-  const title = { home: `${kid.profile.name}의 하루`, missions: '오늘의 미션', vocab: '영단어 아레나', pet: '내 펫 키우기', schedule: '학원 시간표', talk: '가족톡' }[tab] || '';
+  const title = { home: `${kid.profile.name}의 하루`, missions: '오늘의 미션', vocab: '영단어 아레나', pet: '내 펫 키우기', world: '펫 월드', schedule: '학원 시간표', talk: '가족톡' }[tab] || '';
   const pending = M.tasksFor(kid, todayKey(0)).filter((t) => !t.done).length;
   const unread = unreadCount(kidId);
   const badgeFor = (id) => (id === 'missions' && pending > 0 ? { n: pending, cls: 'accent' } : id === 'talk' && unread > 0 ? { n: unread, cls: 'bad' } : null);
@@ -45,7 +46,7 @@ export function KidApp({ kidId, tab, setTab, onExit, onParent }) {
       </button>
       ${TABS.map((t) => {
         const b = badgeFor(t.id);
-        return html`<button key=${t.id} class=${'nav-item ' + (tab === t.id ? 'on' : '')} onClick=${() => setTab(t.id)}>
+        return html`<button key=${t.id} class=${'nav-item ' + (tab === t.id || (t.id === 'pet' && tab === 'world') ? 'on' : '')} onClick=${() => setTab(t.id)}>
           <${Icon} name=${t.icon} />${t.label}
           ${b && html`<span class=${'badge ' + b.cls}>${b.n}</span>`}
           ${t.id === 'pet' && pet && M.petMood(pet) === 'hungry' && html`<span class="badge warn">배고파요</span>`}
@@ -70,7 +71,8 @@ export function KidApp({ kidId, tab, setTab, onExit, onParent }) {
         ${tab === 'home' && html`<${Home} kid=${kid} pet=${pet} setTab=${setTab} />`}
         ${tab === 'missions' && html`<${MissionsTab} kid=${kid} />`}
         ${tab === 'vocab' && html`<${VocabTab} kid=${kid} />`}
-        ${tab === 'pet' && html`<${PetRoom} kid=${kid} />`}
+        ${tab === 'pet' && html`<${PetRoom} kid=${kid} openWorld=${() => setTab('world')} />`}
+        ${tab === 'world' && html`<${PetWorld} kid=${kid} onBack=${() => setTab('pet')} />`}
         ${tab === 'schedule' && html`<${ScheduleTab} kid=${kid} />`}
         ${tab === 'talk' && html`<${TalkView} me=${kidId} />`}
       </div>
@@ -78,7 +80,7 @@ export function KidApp({ kidId, tab, setTab, onExit, onParent }) {
     <nav class="tabbar">
       ${TABS.map((t) => {
         const b = badgeFor(t.id);
-        return html`<button key=${t.id} class=${'tab ' + (tab === t.id ? 'on' : '')} onClick=${() => setTab(t.id)}><${Icon} name=${t.icon} size=${22} />${t.label}${b && t.id === 'talk' && html`<span class="tab-badge">${b.n}</span>`}</button>`;
+        return html`<button key=${t.id} class=${'tab ' + (tab === t.id || (t.id === 'pet' && tab === 'world') ? 'on' : '')} onClick=${() => setTab(t.id)}><${Icon} name=${t.icon} size=${22} />${t.label}${b && t.id === 'talk' && html`<span class="tab-badge">${b.n}</span>`}</button>`;
       })}
     </nav>
   </div>`;
@@ -225,7 +227,7 @@ function MissionsTab({ kid }) {
 }
 
 // ---------- 펫 방 ----------
-function PetRoom({ kid }) {
+function PetRoom({ kid, openWorld }) {
   const pet = M.activePet(kid);
   const pets = M.petsOf(kid);
   const bal = M.talentBalance(kid);
@@ -261,7 +263,7 @@ function PetRoom({ kid }) {
           <div class="row"><h2 style="font-size:22px;font-weight:900;letter-spacing:-.03em">${petDisplayName(pet)}</h2>
             <button class="icon-btn sm" title="이름 짓기" onClick=${() => setRename(true)}><${Icon} name="pencil" size=${15} /></button></div>
         </div>
-        <${MoodBadge} mood=${mood} />
+        <div class="row" style="gap:6px"><${MoodBadge} mood=${mood} /><button class="btn sm world-btn" onClick=${openWorld}><${Icon} name="globe" size=${16} />펫 월드</button></div>
       </div>
       <div class="pet-stage-wrap" ref=${stageRef}>
         <${PetStage} pet=${pet} mood=${mood} interactive=${true} fx=${fx} />
@@ -287,6 +289,7 @@ function PetRoom({ kid }) {
       </section>`;
   const dexCard = html`<section class="card fill">
         <div class="card-h"><${Emo} name="Trophy" size=${28} /><div class="grow"><h2>펫 도감</h2><div class="muted small">전설 ${pets.filter((p) => p.xp >= MAX_PET_XP).length}/${SPECIES.length}</div></div>
+          <button class="btn sm world-btn" onClick=${openWorld}><${Icon} name="globe" size=${16} />펫 월드</button>
           <button class="btn sm" onClick=${() => setAdopt(true)}><${Icon} name="egg" size=${16} />입양</button></div>
         <div class="card-body"><div class="dex">
           ${SPECIES.map((sp) => {
