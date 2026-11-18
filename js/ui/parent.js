@@ -1,0 +1,408 @@
+import { html, useState, useEffect, useMemo, Icon, Emo, Ring, Bar, Modal, toast, SyncBadge, Empty, Subj, Reward, TalentPill } from './core.js';
+import { PetStage, petDisplayName } from './pet.js';
+import { TaskList, DateNav } from './missions.js';
+import { WeekGrid } from './kid.js';
+import * as M from '../model.js';
+import * as db from '../store.js';
+import { STAGES } from '../../data/pets.js';
+import { PRAISE_PRESETS, PENALTY_PRESETS, REWARDS } from '../../data/shop.js';
+import { KOREAN_CITIES, KID_COLORS } from '../../data/presets.js';
+import { VOCAB_LEVELS } from '../../data/vocab.js';
+import { CATEGORIES } from '../../data/missions.js';
+import { parseHomeworkText, runBrowserOcr } from '../ocr.js';
+import { E, todayKey, addDays, DAY_NAMES, uid, timeAgo, shortDate, hhmm } from '../util.js';
+import qrcode from '../../vendor/qrcode.js';
+
+const SECTIONS = [
+  { id: 'overview', label: '대시보드', icon: 'layout-dashboard' },
+  { id: 'homework', label: '숙제 관리', icon: 'list-checks' },
+  { id: 'talents', label: '달란트', icon: 'coins' },
+  { id: 'schedule', label: '시간표', icon: 'calendar-days' },
+  { id: 'vocab', label: '영단어', icon: 'languages' },
+  { id: 'settings', label: '설정·기기 연결', icon: 'settings' }
+];
+
+export function ParentApp({ onExit }) {
+  const [sec, setSec] = useState('overview');
+  const kids = M.kidsList();
+  const [kidId, setKidId] = useState(kids[0]?.id);
+  const kid = M.getKid(kidId) || kids[0];
+
+  return html`<div class="shell" style="--accent:#4F46E5;--accent-soft:#EEF2FF;--accent-ink:#3730A3">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark" style="background:linear-gradient(135deg,#4F46E5,#0EA5E9)"><${Icon} name="shield-check" size=${18} /></div>부모 관리</div>
+      ${SECTIONS.map((s) => html`<button key=${s.id} class=${'nav-item ' + (sec === s.id ? 'on' : '')} onClick=${() => setSec(s.id)}><${Icon} name=${s.icon} />${s.label}</button>`)}
+      <div class="sidebar-foot"><${SyncBadge} /><button class="nav-item" onClick=${onExit}><${Icon} name="log-out" />나가기</button></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div><h1>${SECTIONS.find((s) => s.id === sec).label}</h1><div class="sub">아이들이 패드에서 바꾼 내용이 실시간으로 반영돼요</div></div>
+        <span class="grow"></span>
+        ${sec !== 'overview' && sec !== 'settings' && html`<div class="seg">${kids.map((k) => html`<button key=${k.id} class=${k.id === kid?.id ? 'on' : ''} onClick=${() => setKidId(k.id)}>${k.profile.name}</button>`)}</div>`}
+      </header>
+      ${sec === 'overview' && html`<${Overview} kids=${kids} go=${(s, id) => { setKidId(id); setSec(s); }} />`}
+      ${sec === 'homework' && kid && html`<${HomeworkAdmin} kid=${kid} />`}
+      ${sec === 'talents' && kid && html`<${TalentAdmin} kid=${kid} />`}
+      ${sec === 'schedule' && kid && html`<${ScheduleAdmin} kid=${kid} />`}
+      ${sec === 'vocab' && kid && html`<${VocabAdmin} kid=${kid} />`}
+      ${sec === 'settings' && html`<${SettingsAdmin} kids=${kids} />`}
+    </main>
+    <nav class="tabbar">
+      ${SECTIONS.slice(0, 5).map((s) => html`<button key=${s.id} class=${'tab ' + (sec === s.id ? 'on' : '')} onClick=${() => setSec(s.id)}><${Icon} name=${s.icon} size=${22} />${s.label.slice(0, 4)}</button>`)}
+      <button class=${'tab ' + (sec === 'settings' ? 'on' : '')} onClick=${() => setSec('settings')}><${Icon} name="settings" size=${22} />설정</button>
+    </nav>
+  </div>`;
+}
+
+// ---------- 대시보드 ----------
+function Overview({ kids, go }) {
+  const today = todayKey(0);
+  return html`<div class="stack fade-in" style="gap:18px">
+    <div class="grid g-2">
+      ${kids.map((k) => {
+        const tasks = M.tasksFor(k, today);
+        const done = tasks.filter((t) => t.done).length;
+        const pet = M.activePet(k);
+        const vs = M.vocabStats(k);
+        const picks = M.creativePicks(k, today);
+        const cr = picks.filter((m) => M.creativeDone(k, today, m.id)).length;
+        const color = (KID_COLORS.find((c) => c.id === k.profile.colorId) || KID_COLORS[0]).color;
+        return html`<section class="card" key=${k.id}>
+          <div class="row">
+            <div style="width:84px;height:84px;flex:none">${pet && html`<${PetStage} pet=${pet} mood=${M.petMood(pet)} showBubble=${false} />`}</div>
+            <div class="grow">
+              <div class="row"><h2 style="font-size:22px;font-weight:900;color:${color}">${k.profile.name}</h2><span class="badge">${k.profile.grade}학년</span></div>
+              <div class="small muted">${pet ? `${petDisplayName(pet)} · ${STAGES[pet.stage].name} · ${pet.xp} XP` : ''} · 연속 ${M.streakOf(k)}일</div>
+            </div>
+            <${TalentPill} value=${M.talentBalance(k)} />
+          </div>
+          <div class="grid g-3 keep" style="gap:10px;margin-top:14px">
+            <div class="stat-tile"><${Ring} pct=${tasks.length ? (done / tasks.length) * 100 : 0} size=${44} stroke=${6} color=${color}><span class="tiny bold">${tasks.length ? Math.round((done / tasks.length) * 100) : 0}%</span><//><div><div class="v">${done}/${tasks.length}</div><div class="l">오늘 숙제</div></div></div>
+            <div class="stat-tile"><${Emo} name="Light bulb" size=${40} /><div><div class="v">${cr}/3</div><div class="l">창의 미션</div></div></div>
+            <div class="stat-tile"><${Emo} name=${vs.todayDone ? 'Hundred points' : 'Abacus'} size=${40} /><div><div class="v">${vs.todayDone ? '완료' : '아직'}</div><div class="l">영단어 ${vs.learned}개</div></div></div>
+          </div>
+          <div style="margin-top:14px">
+            ${tasks.filter((t) => !t.done).slice(0, 4).map((t) => html`<div class="list-row" key=${t.id}><span class="check" style="width:22px;height:22px;border-radius:7px"></span><span class="grow small">${t.title}</span><${Subj} s=${t.subject || '숙제'} /></div>`)}
+            ${tasks.length > 0 && tasks.every((t) => t.done) && html`<div class="tip" style="background:var(--good-soft)"><${Emo} name="Trophy" size=${22} />오늘 숙제를 모두 끝냈어요!</div>`}
+          </div>
+          <div class="row wrap" style="margin-top:12px">
+            <button class="btn sm" onClick=${() => go('homework', k.id)}><${Icon} name="list-checks" size=${16} />숙제</button>
+            <button class="btn sm" onClick=${() => go('talents', k.id)}><${Icon} name="coins" size=${16} />칭찬·감점</button>
+          </div>
+        </section>`;
+      })}
+    </div>
+    <div class="grid g-main">
+      <section class="card"><div class="card-h"><${Emo} name="Artist palette" size=${30} /><div class="grow"><h2>아이들 작품 · 제출물</h2><div class="muted small">하트를 누르면 칭찬 달란트 +1</div></div></div><${Submissions} kids=${kids} /></section>
+      <div class="stack" style="gap:18px">
+        <section class="card"><div class="card-h"><${Emo} name="Calendar" size=${30} /><h2 class="grow">최근 7일 숙제 완료</h2></div>${kids.map((k) => html`<${WeekChart} key=${k.id} kid=${k} />`)}</section>
+        <section class="card"><div class="card-h"><${Emo} name="Speech balloon" size=${30} /><h2 class="grow">최근 활동</h2></div><${Activity} kids=${kids} /></section>
+      </div>
+    </div>
+  </div>`;
+}
+
+function WeekChart({ kid }) {
+  const data = M.weekSummary(kid, 7);
+  const color = (KID_COLORS.find((c) => c.id === kid.profile.colorId) || KID_COLORS[0]).color;
+  return html`<div style="margin-bottom:10px"><div class="small bold" style=${`color:${color}`}>${kid.profile.name}</div>
+    <div class="chart">${data.map((d) => html`<div class="col" key=${d.date}>
+      <span class="tiny num" style="color:var(--text-2)">${d.done}/${d.total}</span>
+      <div class="stack-bar" style="height:70px"><i style=${`height:${d.total ? (d.done / d.total) * 100 : 0}%;background:${color}`}></i></div>
+      ${DAY_NAMES[new Date(d.date + 'T00:00:00').getDay()]}
+    </div>`)}</div></div>`;
+}
+
+function Activity({ kids }) {
+  const items = kids.flatMap((k) => M.ledgerList(k).slice(0, 25).map((e) => ({ ...e, kid: k }))).sort((a, b) => b.ts - a.ts).slice(0, 12);
+  if (!items.length) return html`<${Empty} title="아직 활동이 없어요" />`;
+  return html`<div>${items.map((e) => html`<div class="list-row" key=${e.kid.id + e.id}>
+    <${Emo} name=${e.kind === 'feed' ? 'Shortcake' : e.kind === 'penalty' ? 'Thinking face' : e.kind === 'bonus' ? 'Wrapped gift' : 'Coin'} size=${26} />
+    <div class="grow"><div class="small"><b>${e.kid.profile.name}</b> ${e.reason}</div><div class="tiny muted">${timeAgo(e.ts)}</div></div>
+    <span class=${'badge ' + (e.talents >= 0 ? 'gold' : 'bad')}>${e.talents >= 0 ? '+' : ''}${e.talents}</span>
+  </div>`)}</div>`;
+}
+
+function Submissions({ kids }) {
+  const items = [];
+  for (const k of kids) {
+    for (const [date, day] of Object.entries(k.creative || {})) {
+      for (const [mid, d] of Object.entries((day && day.done) || {})) items.push({ kid: k, date, mid, ...d });
+    }
+  }
+  items.sort((a, b) => (b.at || 0) - (a.at || 0));
+  if (!items.length) return html`<${Empty} emoji="Artist palette" title="아직 제출한 작품이 없어요" sub="아이들이 창의 미션을 하면 여기 모여요" />`;
+  return html`<div class="gallery">${items.slice(0, 12).map((it) => html`<${SubCard} key=${it.kid.id + it.date + it.mid} it=${it} />`)}</div>`;
+}
+function SubCard({ it }) {
+  const [img, setImg] = useState(null);
+  const [comment, setComment] = useState('');
+  useEffect(() => { if (it.media) db.getMedia(it.media).then(setImg); }, [it.media]);
+  const cat = CATEGORIES[it.cat] || CATEGORIES.art;
+  return html`<div class="sub-card">
+    ${it.media && html`<div class="sc-img">${img ? html`<img src=${img} alt="" />` : html`<span class="muted small">불러오는 중…</span>`}</div>`}
+    <div class="sc-body">
+      <div class="row"><img src=${E(cat.e)} width="22" height="22" alt="" /><b class="grow small">${it.title}</b></div>
+      <div class="tiny muted">${it.kid.profile.name} · ${shortDate(it.date)} ${it.at ? hhmm(it.at) : ''}</div>
+      ${it.text && html`<div class="sc-text">${it.text}</div>`}
+      ${it.answer && html`<span class="badge good">정답 ${it.answer}</span>`}
+      ${it.liked ? html`<div class="badge bad">❤ 칭찬 완료${it.comment ? ' · ' + it.comment : ''}</div>`
+        : html`<div class="row"><input class="input" style="height:36px;font-size:14px" placeholder="칭찬 한마디" value=${comment} onInput=${(e) => setComment(e.target.value)} />
+          <button class="btn sm danger" onClick=${() => { M.likeCreative(it.kid.id, it.date, it.mid, comment.trim()); toast(`${it.kid.profile.name}에게 하트를 보냈어요 (+1)`, 'Red heart'); }}>❤</button></div>`}
+    </div>
+  </div>`;
+}
+
+// ---------- 숙제 관리 ----------
+function HomeworkAdmin({ kid }) {
+  const [date, setDate] = useState(todayKey(0));
+  const [title, setTitle] = useState('');
+  const [subject, setSubject] = useState('수학');
+  const [talents, setTalents] = useState(2);
+  return html`<div class="grid g-main fade-in">
+    <div class="stack" style="gap:18px">
+      <section class="card">
+        <div class="card-h"><h2 class="grow">${kid.profile.name}의 숙제</h2><${DateNav} date=${date} setDate=${setDate} /></div>
+        <${TaskList} kid=${kid} date=${date} editable=${true} />
+        <hr class="sep" />
+        <div class="form-grid">
+          <div class="field" style="grid-column:span 2"><label>숙제 내용</label><input class="input" placeholder="예: 연산 프린트 2장" value=${title} onInput=${(e) => setTitle(e.target.value)} /></div>
+          <div class="field"><label>과목</label><select class="select" value=${subject} onChange=${(e) => setSubject(e.target.value)}>${['수학', '영어', '국어', '과학', '사회', '학습지', '생활', '숙제'].map((s) => html`<option>${s}</option>`)}</select></div>
+          <div class="field"><label>달란트</label><input class="input" type="number" min="0" max="10" value=${talents} onInput=${(e) => setTalents(e.target.value)} /></div>
+          <button class="btn primary" onClick=${() => { if (!title.trim()) return; M.addTask(kid.id, date, { title: title.trim(), subject, talents: Number(talents) }); setTitle(''); toast('숙제를 추가했어요', 'Memo'); }}><${Icon} name="plus" size=${18} />추가</button>
+        </div>
+      </section>
+      <${BulkImport} kid=${kid} />
+    </div>
+    <div class="stack" style="gap:18px">
+      <${WorkbookAdmin} kid=${kid} />
+      <${HabitAdmin} kid=${kid} />
+    </div>
+  </div>`;
+}
+
+function WorkbookAdmin({ kid }) {
+  const wbs = Object.values(kid.workbooks || {}).filter(Boolean);
+  const [f, setF] = useState({ subject: '수학', title: '', startPage: 1, pagesPerDay: 2, totalPages: 120, days: [1, 2, 3, 4, 5], talents: 2 });
+  const set = (k, v) => setF({ ...f, [k]: v });
+  function add() {
+    if (!f.title.trim()) return toast('교재 이름을 입력하세요', 'Memo');
+    const id = uid('wb');
+    db.set(`kids/${kid.id}/workbooks/${id}`, { ...f, id, title: f.title.trim(), active: true, baseDate: todayKey(0), startPage: Number(f.startPage), pagesPerDay: Number(f.pagesPerDay), totalPages: Number(f.totalPages), talents: Number(f.talents) });
+    setF({ ...f, title: '' });
+    toast('문제집 자동 배정을 등록했어요', 'Books');
+  }
+  return html`<section class="card">
+    <div class="card-h"><${Emo} name="Books" size=${30} /><div class="grow"><h3>문제집 자동 배정</h3><div class="muted small">시작 페이지·하루 분량·요일만 정하면 매일 자동 생성</div></div></div>
+    ${wbs.map((w) => html`<div class="list-row" key=${w.id}><${Subj} s=${w.subject} /><div class="grow"><b class="small">${w.title}</b><div class="tiny muted">p.${w.startPage}부터 하루 ${w.pagesPerDay}쪽 · ${(w.days || []).map((d) => DAY_NAMES[d]).join('')} · 총 ${w.totalPages}p</div></div>
+      <button class="btn sm" onClick=${() => db.set(`kids/${kid.id}/workbooks/${w.id}/active`, !w.active)}>${w.active ? '일시정지' : '재개'}</button>
+      <button class="icon-btn sm" onClick=${() => db.remove(`kids/${kid.id}/workbooks/${w.id}`)}><${Icon} name="trash-2" size=${15} /></button></div>`)}
+    <div class="stack" style="margin-top:10px">
+      <div class="form-grid">
+        <div class="field"><label>과목</label><input class="input" value=${f.subject} onInput=${(e) => set('subject', e.target.value)} /></div>
+        <div class="field" style="grid-column:span 2"><label>교재</label><input class="input" placeholder="예: 최상위 수학 5-2" value=${f.title} onInput=${(e) => set('title', e.target.value)} /></div>
+        <div class="field"><label>시작 p</label><input class="input" type="number" value=${f.startPage} onInput=${(e) => set('startPage', e.target.value)} /></div>
+        <div class="field"><label>하루 쪽수</label><input class="input" type="number" value=${f.pagesPerDay} onInput=${(e) => set('pagesPerDay', e.target.value)} /></div>
+        <div class="field"><label>총 페이지</label><input class="input" type="number" value=${f.totalPages} onInput=${(e) => set('totalPages', e.target.value)} /></div>
+      </div>
+      <div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<button key=${d} class=${'day ' + (f.days.includes(d) ? 'on' : '')} onClick=${() => set('days', f.days.includes(d) ? f.days.filter((x) => x !== d) : [...f.days, d])}>${DAY_NAMES[d]}</button>`)}</div>
+      <button class="btn primary" onClick=${add}>자동 배정 등록</button>
+    </div>
+  </section>`;
+}
+
+function HabitAdmin({ kid }) {
+  const habits = Object.values(kid.habits || {}).filter(Boolean);
+  const [t, setT] = useState('');
+  return html`<section class="card">
+    <div class="card-h"><${Emo} name="Sparkles" size=${30} /><div class="grow"><h3>매일 생활 습관</h3><div class="muted small">매일 할 일에 자동으로 들어가요 (+1)</div></div></div>
+    ${habits.map((h) => html`<div class="list-row" key=${h.id}><span class="grow small">${h.title}</span>
+      <button class="btn sm" onClick=${() => db.set(`kids/${kid.id}/habits/${h.id}/active`, !h.active)}>${h.active ? '켜짐' : '꺼짐'}</button>
+      <button class="icon-btn sm" onClick=${() => db.remove(`kids/${kid.id}/habits/${h.id}`)}><${Icon} name="trash-2" size=${15} /></button></div>`)}
+    <div class="row" style="margin-top:10px"><input class="input" placeholder="예: 양치 후 치실하기" value=${t} onInput=${(e) => setT(e.target.value)} />
+      <button class="btn" onClick=${() => { if (!t.trim()) return; const id = uid('h'); db.set(`kids/${kid.id}/habits/${id}`, { id, title: t.trim(), talents: 1, active: true }); setT(''); }}>추가</button></div>
+  </section>`;
+}
+
+function BulkImport({ kid }) {
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState('');
+  const [drafts, setDrafts] = useState([]);
+  async function onFile(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      const t = await runBrowserOcr(f, setStatus);
+      setText(t);
+      setDrafts(parseHomeworkText(t));
+      setStatus('인식 완료!');
+    } catch (err) { setStatus('OCR 오류: ' + err.message); }
+  }
+  function commit() {
+    drafts.forEach((d) => M.addTask(kid.id, d.dateKey, { title: d.title, subject: d.subject, talents: REWARDS.homework }));
+    toast(`${drafts.length}개 숙제를 등록했어요`, 'Clipboard');
+    setDrafts([]); setText('');
+  }
+  return html`<section class="card">
+    <div class="card-h"><${Emo} name="Clipboard" size=${30} /><div class="grow"><h3>사진 OCR · 일괄 붙여넣기</h3><div class="muted small">주간 계획표 사진이나 카톡 메시지를 붙여넣으면 날짜별로 자동 분류</div></div></div>
+    <div class="row wrap" style="margin-bottom:10px">
+      <label class="btn sm"><${Icon} name="scan-line" size=${16} />사진에서 읽기<input type="file" accept="image/*" class="sr" onChange=${onFile} /></label>
+      <span class="small muted">${status}</span>
+    </div>
+    <textarea class="textarea" placeholder=${'월: 쎈 수학 p.48~50, 영어 리딩 p.24~25\n화: 매3비 비문학 p.18~19'} value=${text} onInput=${(e) => setText(e.target.value)}></textarea>
+    <div class="row" style="margin-top:10px"><button class="btn" onClick=${() => setDrafts(parseHomeworkText(text))}>미리보기</button>${drafts.length > 0 && html`<button class="btn primary" onClick=${commit}>${drafts.length}개 등록</button>`}</div>
+    ${drafts.length > 0 && html`<div style="margin-top:10px">${drafts.map((d, i) => html`<div class="list-row" key=${i}><span class="badge">${shortDate(d.dateKey)}</span><${Subj} s=${d.subject} /><span class="small grow">${d.title}</span></div>`)}</div>`}
+  </section>`;
+}
+
+// ---------- 달란트 ----------
+function TalentAdmin({ kid }) {
+  const [reason, setReason] = useState('');
+  const [amount, setAmount] = useState(2);
+  const [pet, setPet] = useState(false);
+  const list = M.ledgerList(kid);
+  function grant(n, r) {
+    M.grantTalents(kid.id, n, r, pet);
+    toast(`${kid.profile.name}: ${r} (${n > 0 ? '+' : ''}${n})`, n > 0 ? 'Wrapped gift' : 'Thinking face');
+  }
+  return html`<div class="grid g-main fade-in">
+    <div class="stack" style="gap:18px">
+      <section class="card">
+        <div class="card-h"><${Emo} name="Wrapped gift" size=${30} /><h3 class="grow">칭찬 달란트</h3><${TalentPill} value=${M.talentBalance(kid)} /></div>
+        <div class="row wrap">${PRAISE_PRESETS.map((p) => html`<button key=${p.label} class="chip" onClick=${() => grant(p.talents, p.label)}>${p.label} <b style="color:#9A6100">+${p.talents}</b></button>`)}</div>
+        <hr class="sep" />
+        <div class="card-h"><${Emo} name="Thinking face" size=${30} /><h3 class="grow">감점</h3>
+          <label class="row small" style="gap:6px"><input type="checkbox" checked=${pet} onChange=${(e) => setPet(e.target.checked)} />펫 경험치도 차감 (×10)</label></div>
+        <div class="row wrap">${PENALTY_PRESETS.map((p) => html`<button key=${p.label} class="chip" onClick=${() => grant(p.talents, p.label)}>${p.label} <b style="color:var(--bad)">${p.talents}</b></button>`)}</div>
+        <hr class="sep" />
+        <div class="form-grid">
+          <div class="field" style="grid-column:span 2"><label>직접 입력</label><input class="input" placeholder="사유" value=${reason} onInput=${(e) => setReason(e.target.value)} /></div>
+          <div class="field"><label>달란트 (±)</label><input class="input" type="number" value=${amount} onInput=${(e) => setAmount(e.target.value)} /></div>
+          <button class="btn primary" onClick=${() => { if (!reason.trim() || !Number(amount)) return; grant(Number(amount), reason.trim()); setReason(''); }}>반영</button>
+        </div>
+      </section>
+    </div>
+    <section class="card">
+      <div class="card-h"><${Emo} name="Ledger" size=${30} /><h3 class="grow">달란트 장부</h3></div>
+      ${list.slice(0, 60).map((e) => html`<div class="list-row" key=${e.id}>
+        <div class="grow"><div class="small">${e.reason}</div><div class="tiny muted">${shortDate(e.date)} ${hhmm(e.ts)}${e.petXp ? ` · 펫 ${e.petXp > 0 ? '+' : ''}${e.petXp}XP` : ''}</div></div>
+        <span class=${'badge ' + (e.talents >= 0 ? 'gold' : 'bad')}>${e.talents >= 0 ? '+' : ''}${e.talents}</span>
+        ${e.by === 'parent' && html`<button class="icon-btn sm" title="취소" onClick=${() => db.remove(`kids/${kid.id}/ledger/${e.id}`)}><${Icon} name="rotate-ccw" size=${14} /></button>`}
+      </div>`)}
+    </section>
+  </div>`;
+}
+
+// ---------- 시간표 ----------
+function ScheduleAdmin({ kid }) {
+  const [f, setF] = useState({ title: '', type: '학원', start: '15:30', end: '17:00', note: '', days: [1] });
+  const set = (k, v) => setF({ ...f, [k]: v });
+  const items = Object.values(kid.academies || {}).filter(Boolean).sort((a, b) => (a.days[0] ?? 9) - (b.days[0] ?? 9) || a.start.localeCompare(b.start));
+  return html`<div class="stack fade-in" style="gap:18px">
+    <section class="card"><${WeekGrid} kid=${kid} /></section>
+    <div class="grid g-2">
+      <section class="card">
+        <div class="card-h"><h3 class="grow">등록된 일정</h3></div>
+        ${items.length === 0 && html`<${Empty} title="일정이 없어요" />`}
+        ${items.map((a) => html`<div class="list-row" key=${a.id}><span class="badge">${(a.days || []).map((d) => DAY_NAMES[d]).join('')}</span>
+          <div class="grow"><b class="small">${a.title}</b><div class="tiny muted">${a.start}~${a.end} · ${a.type}${a.note ? ' · ' + a.note : ''}</div></div>
+          <button class="icon-btn sm" onClick=${() => db.remove(`kids/${kid.id}/academies/${a.id}`)}><${Icon} name="trash-2" size=${15} /></button></div>`)}
+      </section>
+      <section class="card">
+        <div class="card-h"><h3 class="grow">일정 추가</h3></div>
+        <div class="stack">
+          <div class="form-grid">
+            <div class="field" style="grid-column:span 2"><label>이름</label><input class="input" placeholder="예: 테니스" value=${f.title} onInput=${(e) => set('title', e.target.value)} /></div>
+            <div class="field"><label>종류</label><select class="select" value=${f.type} onChange=${(e) => set('type', e.target.value)}>${['학원', '학습지', '예체능', '과외/기타'].map((t) => html`<option>${t}</option>`)}</select></div>
+            <div class="field"><label>시작</label><input class="input" type="time" value=${f.start} onInput=${(e) => set('start', e.target.value)} /></div>
+            <div class="field"><label>종료</label><input class="input" type="time" value=${f.end} onInput=${(e) => set('end', e.target.value)} /></div>
+          </div>
+          <input class="input" placeholder="준비물 메모 (예: 라켓, 물통)" value=${f.note} onInput=${(e) => set('note', e.target.value)} />
+          <div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<button key=${d} class=${'day ' + (f.days.includes(d) ? 'on' : '')} onClick=${() => set('days', f.days.includes(d) ? f.days.filter((x) => x !== d) : [...f.days, d])}>${DAY_NAMES[d]}</button>`)}</div>
+          <button class="btn primary" onClick=${() => { if (!f.title.trim() || !f.days.length) return toast('이름과 요일을 선택하세요', 'Memo'); const id = uid('ac'); db.set(`kids/${kid.id}/academies/${id}`, { ...f, id, title: f.title.trim(), days: [...f.days].sort() }); set('title', ''); toast('시간표에 추가했어요', 'Spiral calendar'); }}>저장</button>
+        </div>
+      </section>
+    </div>
+  </div>`;
+}
+
+// ---------- 영단어 ----------
+function VocabAdmin({ kid }) {
+  const vs = M.vocabStats(kid);
+  const weak = M.weakWords(kid);
+  const [w, setW] = useState({ word: '', meaning: '', sentence: '' });
+  const custom = Object.values(db.getState().customWords || {}).filter(Boolean);
+  return html`<div class="grid g-2 fade-in">
+    <section class="card">
+      <div class="card-h"><h3 class="grow">${kid.profile.name}의 단어 레벨</h3></div>
+      <div class="stack" style="gap:8px">${VOCAB_LEVELS.map((l) => html`<button key=${l.level} class=${'list-row'} style=${`border-radius:14px;padding:12px;${Number(kid.profile.vocabLevel) === l.level ? 'background:var(--accent-soft)' : ''}`} onClick=${() => db.set(`kids/${kid.id}/profile/vocabLevel`, l.level)}>
+        <span class=${'badge ' + (Number(kid.profile.vocabLevel) === l.level ? 'accent' : '')}>Lv.${l.level}</span><div class="grow" style="text-align:left"><b class="small">${l.label}</b><div class="tiny muted">${l.desc} · ${M.wordsForLevel(l.level).length}단어</div></div>
+        ${Number(kid.profile.vocabLevel) === l.level && html`<${Icon} name="circle-check" />`}</button>`)}</div>
+      <div class="grid g-3" style="margin-top:14px;gap:10px">
+        <div class="stat-tile"><div><div class="v">${vs.learned}</div><div class="l">익힌 단어</div></div></div>
+        <div class="stat-tile"><div><div class="v">${vs.mastered}</div><div class="l">마스터</div></div></div>
+        <div class="stat-tile"><div><div class="v">${vs.due}</div><div class="l">복습 대기</div></div></div>
+      </div>
+    </section>
+    <div class="stack" style="gap:18px">
+      <section class="card">
+        <div class="card-h"><${Emo} name="Thinking face" size=${30} /><h3 class="grow">자주 틀리는 단어</h3></div>
+        ${weak.length === 0 ? html`<div class="muted small">아직 데이터가 없어요</div>` : weak.map((x) => html`<div class="list-row" key=${x.id}><b class="small">${x.word}</b><span class="small muted grow">${x.meaning}</span><span class="badge bad">오답 ${x.w}</span></div>`)}
+      </section>
+      <section class="card">
+        <div class="card-h"><h3 class="grow">학원 단어 추가 (가족 공용)</h3><span class="badge">Lv.${kid.profile.vocabLevel}로 추가</span></div>
+        <div class="stack">
+          <div class="row"><input class="input" placeholder="영어 단어" value=${w.word} onInput=${(e) => setW({ ...w, word: e.target.value })} /><input class="input" placeholder="뜻" value=${w.meaning} onInput=${(e) => setW({ ...w, meaning: e.target.value })} /></div>
+          <input class="input" placeholder="예문 (선택)" value=${w.sentence} onInput=${(e) => setW({ ...w, sentence: e.target.value })} />
+          <button class="btn primary" onClick=${() => { if (!w.word.trim() || !w.meaning.trim()) return; const id = uid('cw'); db.set(`customWords/${id}`, { id, level: Number(kid.profile.vocabLevel), word: w.word.trim().toLowerCase(), meaning: w.meaning.trim(), sentence: w.sentence.trim(), pos: '' }); setW({ word: '', meaning: '', sentence: '' }); toast('단어를 추가했어요', 'Memo'); }}>추가</button>
+        </div>
+        ${custom.slice(-10).reverse().map((c) => html`<div class="list-row" key=${c.id}><b class="small">${c.word}</b><span class="small muted grow">${c.meaning}</span><span class="badge">Lv.${c.level}</span><button class="icon-btn sm" onClick=${() => db.remove(`customWords/${c.id}`)}><${Icon} name="trash-2" size=${14} /></button></div>`)}
+      </section>
+    </div>
+  </div>`;
+}
+
+// ---------- 설정 ----------
+function SettingsAdmin({ kids }) {
+  const s = M.settings();
+  const fam = db.getFamily();
+  const link = `${location.origin}${location.pathname}#family=${fam}`;
+  const [pin, setPin] = useState(s.pin || '1234');
+  const qrSvg = useMemo(() => { try { const q = qrcode(0, 'M'); q.addData(link); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); } catch (_) { return ''; } }, [link]);
+  const [mute, setMute] = useState(localStorage.getItem('kq2_mute') === '1');
+  return html`<div class="grid g-2 fade-in">
+    <section class="card">
+      <div class="card-h"><${Emo} name="Laptop" size=${30} /><div class="grow"><h3>다른 기기 연결</h3><div class="muted small">아이 패드·부모님 폰에서 이 QR을 찍거나 링크를 열면 같은 데이터를 실시간으로 공유해요</div></div></div>
+      <div class="row wrap" style="align-items:flex-start">
+        <div class="qr" dangerouslySetInnerHTML=${{ __html: qrSvg }}></div>
+        <div class="stack grow" style="min-width:220px">
+          <div class="field"><label>가족 연결 링크</label><input class="input" readonly value=${link} onFocus=${(e) => e.target.select()} /></div>
+          <button class="btn primary" onClick=${async () => { try { await navigator.clipboard.writeText(link); toast('링크를 복사했어요. 카톡으로 다른 기기에 보내세요', 'Sparkles'); } catch (_) { toast('복사 실패: 링크를 길게 눌러 복사하세요', 'Memo'); } }}><${Icon} name="copy" size=${18} />링크 복사</button>
+          <div class="tip small"><${Icon} name="info" size=${16} /><div>iPad Safari에서 링크를 연 뒤 <b>공유 → 홈 화면에 추가</b>하면 앱처럼 쓸 수 있어요. 링크는 가족끼리만 공유하세요.</div></div>
+          <${SyncBadge} />
+        </div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="card-h"><${Emo} name="Gear" size=${30} /><h3 class="grow">기본 설정</h3></div>
+      <div class="stack">
+        <div class="form-grid">
+          <div class="field"><label>부모 PIN (4자리)</label><input class="input" inputmode="numeric" maxlength="4" value=${pin} onInput=${(e) => setPin(e.target.value.replace(/\D/g, ''))} /></div>
+          <button class="btn" onClick=${() => { if (pin.length !== 4) return toast('4자리 숫자로 입력하세요', 'Memo'); db.set('settings/pin', pin); toast('PIN을 변경했어요', 'Locked'); }}>PIN 저장</button>
+        </div>
+        <div class="field"><label>날씨 지역</label><select class="select" value=${s.cityId} onChange=${(e) => db.set('settings/cityId', e.target.value)}>${KOREAN_CITIES.map((c) => html`<option value=${c.id}>${c.name}</option>`)}</select></div>
+        <label class="row small"><input type="checkbox" checked=${mute} onChange=${(e) => { setMute(e.target.checked); localStorage.setItem('kq2_mute', e.target.checked ? '1' : '0'); }} />이 기기 효과음 끄기</label>
+        <hr class="sep" />
+        <div class="label">아이 프로필</div>
+        ${kids.map((k) => html`<div class="list-row" key=${k.id}><b class="grow">${k.profile.name}</b>
+          <select class="select" style="width:auto;height:36px" value=${k.profile.grade} onChange=${(e) => db.set(`kids/${k.id}/profile/grade`, Number(e.target.value))}>${[1, 2, 3, 4, 5, 6].map((g) => html`<option value=${g}>${g}학년</option>`)}</select>
+          <select class="select" style="width:auto;height:36px" value=${k.profile.colorId} onChange=${(e) => db.set(`kids/${k.id}/profile/colorId`, e.target.value)}>${KID_COLORS.map((c) => html`<option value=${c.id}>${c.name}</option>`)}</select></div>`)}
+        <hr class="sep" />
+        <div class="row wrap">
+          <button class="btn" onClick=${() => { const blob = new Blob([JSON.stringify(db.getState(), null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `kidquest-backup-${todayKey(0)}.json`; a.click(); }}><${Icon} name="download" size=${18} />JSON 백업</button>
+          <button class="btn danger" onClick=${() => { if (confirm('이 기기에서 가족 연결을 해제할까요? (데이터는 서버에 그대로 남아요)')) { db.leaveFamily(); location.reload(); } }}><${Icon} name="log-out" size=${18} />이 기기 연결 해제</button>
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
