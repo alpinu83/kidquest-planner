@@ -13,6 +13,26 @@ export function useStore() {
   return db.getState();
 }
 
+// 화면 크기 훅 (폰/아이패드 레이아웃 전환)
+export function useMedia(query) {
+  const get = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(query).matches : false);
+  const [m, setM] = useState(get);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setM(mq.matches);
+    on();
+    if (mq.addEventListener) mq.addEventListener('change', on); else mq.addListener(on);
+    return () => { if (mq.removeEventListener) mq.removeEventListener('change', on); else mq.removeListener(on); };
+  }, [query]);
+  return m;
+}
+export const usePhone = () => useMedia('(max-width: 700px)');
+
+// 세그먼트 탭 (폰에서 스크롤 대신 화면 나눠 보기)
+export function Seg({ items, value, onChange, cls = '' }) {
+  return html`<div class=${'seg ' + cls}>${items.map((it) => html`<button key=${it.id} class=${value === it.id ? 'on' : ''} onClick=${() => onChange(it.id)}>${it.label}${it.badge ? html` <span class="badge accent" style="height:18px;padding:0 6px">${it.badge}</span>` : ''}</button>`)}</div>`;
+}
+
 export function Icon({ name, size = 20, stroke = 2, cls = '' }) {
   const inner = ICONS[name] || ICONS['circle-help'];
   return html`<svg class=${'ic ' + cls} xmlns="http://www.w3.org/2000/svg" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=${stroke} stroke-linecap="round" stroke-linejoin="round" dangerouslySetInnerHTML=${{ __html: inner }}></svg>`;

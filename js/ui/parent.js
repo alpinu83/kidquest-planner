@@ -1,4 +1,6 @@
-import { html, useState, useEffect, useMemo, Icon, Emo, Ring, Bar, Modal, toast, SyncBadge, Empty, Subj, Reward, TalentPill } from './core.js';
+import { html, useState, useEffect, useMemo, Icon, Emo, Ring, Bar, Modal, toast, SyncBadge, Empty, Subj, Reward, TalentPill, Seg, usePhone } from './core.js';
+import { TalkView, WhoAmIParent, Avatar } from './talk.js';
+import { getMe, setMe, isParentId, unreadCount, memberInfo, PARENTS, PARENT_AVATARS } from '../members.js';
 import { PetStage, petDisplayName } from './pet.js';
 import { TaskList, DateNav } from './missions.js';
 import { WeekGrid } from './kid.js';
@@ -14,42 +16,62 @@ import { E, todayKey, addDays, DAY_NAMES, uid, timeAgo, shortDate, hhmm } from '
 import qrcode from '../../vendor/qrcode.js';
 
 const SECTIONS = [
-  { id: 'overview', label: '대시보드', icon: 'layout-dashboard' },
-  { id: 'homework', label: '숙제 관리', icon: 'list-checks' },
-  { id: 'talents', label: '달란트', icon: 'coins' },
-  { id: 'schedule', label: '시간표', icon: 'calendar-days' },
-  { id: 'vocab', label: '영단어', icon: 'languages' },
-  { id: 'settings', label: '설정·기기 연결', icon: 'settings' }
+  { id: 'overview', label: '대시보드', short: '대시', icon: 'layout-dashboard' },
+  { id: 'talk', label: '가족톡', short: '톡', icon: 'message-circle' },
+  { id: 'homework', label: '숙제 관리', short: '숙제', icon: 'list-checks' },
+  { id: 'talents', label: '달란트', short: '달란트', icon: 'coins' },
+  { id: 'schedule', label: '시간표', short: '시간표', icon: 'calendar-days' },
+  { id: 'vocab', label: '영단어', short: '단어', icon: 'languages' },
+  { id: 'settings', label: '설정·기기 연결', short: '설정', icon: 'settings' }
 ];
 
-export function ParentApp({ onExit }) {
-  const [sec, setSec] = useState('overview');
+// 부모 화면에서 가족톡에 쓸 "나" (아빠/엄마) — 기기에 기억된 값 또는 이번 세션 선택
+function parentMe() {
+  const me = getMe();
+  if (isParentId(me)) return me;
+  const s = sessionStorage.getItem('kq2_parent_me');
+  return isParentId(s) ? s : null;
+}
+
+export function ParentApp({ sec = 'overview', setSec, onExit }) {
+  if (!SECTIONS.some((s) => s.id === sec)) sec = 'overview';
   const kids = M.kidsList();
   const [kidId, setKidId] = useState(kids[0]?.id);
+  const [me, setMeState] = useState(parentMe());
   const kid = M.getKid(kidId) || kids[0];
+  const unread = me ? unreadCount(me) : 0;
+  const pickMe = (id) => {
+    const dev = getMe();
+    if (!dev || isParentId(dev)) setMe(id); else sessionStorage.setItem('kq2_parent_me', id);
+    setMeState(id);
+  };
+  const navBadge = (id) => id === 'talk' && unread > 0 ? html`<span class="badge bad">${unread}</span>` : null;
 
   return html`<div class="shell" style="--accent:#4F46E5;--accent-soft:#EEF2FF;--accent-ink:#3730A3">
     <aside class="sidebar">
       <div class="brand"><div class="brand-mark" style="background:linear-gradient(135deg,#4F46E5,#0EA5E9)"><${Icon} name="shield-check" size=${18} /></div>부모 관리</div>
-      ${SECTIONS.map((s) => html`<button key=${s.id} class=${'nav-item ' + (sec === s.id ? 'on' : '')} onClick=${() => setSec(s.id)}><${Icon} name=${s.icon} />${s.label}</button>`)}
-      <div class="sidebar-foot"><${SyncBadge} /><button class="nav-item" onClick=${onExit}><${Icon} name="log-out" />나가기</button></div>
+      ${me && html`<button class="nav-item" style="margin-bottom:8px;background:var(--surface-2)" onClick=${onExit}><${Avatar} id=${me} size=${32} /><div style="text-align:left;line-height:1.2"><div class="bold" style="color:var(--text)">${memberInfo(me).name}</div><div class="tiny muted">프로필 전환</div></div></button>`}
+      ${SECTIONS.map((s) => html`<button key=${s.id} class=${'nav-item ' + (sec === s.id ? 'on' : '')} onClick=${() => setSec(s.id)}><${Icon} name=${s.icon} />${s.label}${navBadge(s.id)}</button>`)}
+      <div class="sidebar-foot"><button class="nav-item" onClick=${onExit}><${Icon} name="log-out" />나가기</button><div class="corner-mini"><${SyncBadge} /></div></div>
     </aside>
     <main class="main">
       <header class="topbar">
-        <div><h1>${SECTIONS.find((s) => s.id === sec).label}</h1><div class="sub">아이들이 패드에서 바꾼 내용이 실시간으로 반영돼요</div></div>
-        <span class="grow"></span>
-        ${sec !== 'overview' && sec !== 'settings' && html`<div class="seg">${kids.map((k) => html`<button key=${k.id} class=${k.id === kid?.id ? 'on' : ''} onClick=${() => setKidId(k.id)}>${k.profile.name}</button>`)}</div>`}
+        <button class="only-phone avatar-btn" onClick=${onExit} aria-label="나가기">${me ? html`<${Avatar} id=${me} size=${36} />` : html`<${Icon} name="log-out" />`}</button>
+        <div class="grow" style="min-width:0"><h1>${SECTIONS.find((s) => s.id === sec).label}</h1></div>
+        ${!['overview', 'settings', 'talk'].includes(sec) && html`<div class="seg">${kids.map((k) => html`<button key=${k.id} class=${k.id === kid?.id ? 'on' : ''} onClick=${() => setKidId(k.id)}>${k.profile.name}</button>`)}</div>`}
       </header>
-      ${sec === 'overview' && html`<${Overview} kids=${kids} go=${(s, id) => { setKidId(id); setSec(s); }} />`}
-      ${sec === 'homework' && kid && html`<${HomeworkAdmin} kid=${kid} />`}
-      ${sec === 'talents' && kid && html`<${TalentAdmin} kid=${kid} />`}
-      ${sec === 'schedule' && kid && html`<${ScheduleAdmin} kid=${kid} />`}
-      ${sec === 'vocab' && kid && html`<${VocabAdmin} kid=${kid} />`}
-      ${sec === 'settings' && html`<${SettingsAdmin} kids=${kids} />`}
+      <div class=${'page' + (sec === 'talk' ? ' no-pad' : '')}>
+        ${sec === 'overview' && html`<${Overview} kids=${kids} go=${(s, id) => { setKidId(id); setSec(s); }} />`}
+        ${sec === 'talk' && (me ? html`<${TalkView} me=${me} />` : html`<${WhoAmIParent} onPick=${pickMe} />`)}
+        ${sec === 'homework' && kid && html`<${HomeworkAdmin} kid=${kid} />`}
+        ${sec === 'talents' && kid && html`<${TalentAdmin} kid=${kid} />`}
+        ${sec === 'schedule' && kid && html`<${ScheduleAdmin} kid=${kid} />`}
+        ${sec === 'vocab' && kid && html`<${VocabAdmin} kid=${kid} />`}
+        ${sec === 'settings' && html`<${SettingsAdmin} kids=${kids} />`}
+      </div>
     </main>
     <nav class="tabbar">
-      ${SECTIONS.slice(0, 5).map((s) => html`<button key=${s.id} class=${'tab ' + (sec === s.id ? 'on' : '')} onClick=${() => setSec(s.id)}><${Icon} name=${s.icon} size=${22} />${s.label.slice(0, 4)}</button>`)}
-      <button class=${'tab ' + (sec === 'settings' ? 'on' : '')} onClick=${() => setSec('settings')}><${Icon} name="settings" size=${22} />설정</button>
+      ${SECTIONS.map((s) => html`<button key=${s.id} class=${'tab ' + (sec === s.id ? 'on' : '')} onClick=${() => setSec(s.id)}><${Icon} name=${s.icon} size=${21} />${s.short}${s.id === 'talk' && unread > 0 && html`<span class="tab-badge">${unread}</span>`}</button>`)}
     </nav>
   </div>`;
 }
@@ -57,7 +79,7 @@ export function ParentApp({ onExit }) {
 // ---------- 대시보드 ----------
 function Overview({ kids, go }) {
   const today = todayKey(0);
-  return html`<div class="stack fade-in" style="gap:18px">
+  return html`<div class="overview fade-in">
     <div class="grid g-2">
       ${kids.map((k) => {
         const tasks = M.tasksFor(k, today);
@@ -76,13 +98,13 @@ function Overview({ kids, go }) {
             </div>
             <${TalentPill} value=${M.talentBalance(k)} />
           </div>
-          <div class="grid g-3 keep" style="gap:10px;margin-top:14px">
+          <div class="grid g-3 keep" style="gap:8px;margin-top:10px">
             <div class="stat-tile"><${Ring} pct=${tasks.length ? (done / tasks.length) * 100 : 0} size=${44} stroke=${6} color=${color}><span class="tiny bold">${tasks.length ? Math.round((done / tasks.length) * 100) : 0}%</span><//><div><div class="v">${done}/${tasks.length}</div><div class="l">오늘 숙제</div></div></div>
             <div class="stat-tile"><${Emo} name="Light bulb" size=${40} /><div><div class="v">${cr}/3</div><div class="l">창의 미션</div></div></div>
             <div class="stat-tile"><${Emo} name=${vs.todayDone ? 'Hundred points' : 'Abacus'} size=${40} /><div><div class="v">${vs.todayDone ? '완료' : '아직'}</div><div class="l">영단어 ${vs.learned}개</div></div></div>
           </div>
-          <div style="margin-top:14px">
-            ${tasks.filter((t) => !t.done).slice(0, 4).map((t) => html`<div class="list-row" key=${t.id}><span class="check" style="width:22px;height:22px;border-radius:7px"></span><span class="grow small">${t.title}</span><${Subj} s=${t.subject || '숙제'} /></div>`)}
+          <div style="margin-top:8px">
+            ${tasks.filter((t) => !t.done).slice(0, 3).map((t) => html`<div class="list-row" key=${t.id}><span class="check" style="width:22px;height:22px;border-radius:7px"></span><span class="grow small">${t.title}</span><${Subj} s=${t.subject || '숙제'} /></div>`)}
             ${tasks.length > 0 && tasks.every((t) => t.done) && html`<div class="tip" style="background:var(--good-soft)"><${Emo} name="Trophy" size=${22} />오늘 숙제를 모두 끝냈어요!</div>`}
           </div>
           <div class="row wrap" style="margin-top:12px">
@@ -92,12 +114,10 @@ function Overview({ kids, go }) {
         </section>`;
       })}
     </div>
-    <div class="grid g-main">
-      <section class="card"><div class="card-h"><${Emo} name="Artist palette" size=${30} /><div class="grow"><h2>아이들 작품 · 제출물</h2><div class="muted small">하트를 누르면 칭찬 달란트 +1</div></div></div><${Submissions} kids=${kids} /></section>
-      <div class="stack" style="gap:18px">
-        <section class="card"><div class="card-h"><${Emo} name="Calendar" size=${30} /><h2 class="grow">최근 7일 숙제 완료</h2></div>${kids.map((k) => html`<${WeekChart} key=${k.id} kid=${k} />`)}</section>
-        <section class="card"><div class="card-h"><${Emo} name="Speech balloon" size=${30} /><h2 class="grow">최근 활동</h2></div><${Activity} kids=${kids} /></section>
-      </div>
+    <div class="grid g-3 fill-row">
+      <section class="card fill"><div class="card-h"><${Emo} name="Artist palette" size=${28} /><div class="grow"><h2>아이들 작품</h2><div class="muted small">하트 = 칭찬 +1</div></div></div><div class="card-body"><${Submissions} kids=${kids} /></div></section>
+      <section class="card fill"><div class="card-h"><${Emo} name="Calendar" size=${28} /><h2 class="grow">최근 7일 숙제</h2></div><div class="card-body">${kids.map((k) => html`<${WeekChart} key=${k.id} kid=${k} />`)}</div></section>
+      <section class="card fill"><div class="card-h"><${Emo} name="Speech balloon" size=${28} /><h2 class="grow">최근 활동</h2></div><div class="card-body"><${Activity} kids=${kids} /></div></section>
     </div>
   </div>`;
 }
@@ -215,18 +235,28 @@ function HabitAdmin({ kid }) {
   const habits = Object.values(kid.habits || {}).filter(Boolean).sort((a, b) => (a.order ?? 9) - (b.order ?? 9));
   const blank = { title: '', subject: '생활', talents: 1, days: [], weekly: false };
   const [f, setF] = useState(blank);
+  const [editId, setEditId] = useState(null);
   const set = (k, v) => setF({ ...f, [k]: v });
+  const startEdit = (h) => { setEditId(h.id); setF({ title: h.title, subject: h.subject || '생활', talents: h.talents ?? 1, days: (h.days || []).map(Number), weekly: !!h.weekly }); };
   const dayText = (h) => !h.days || !h.days.length ? '매일' : [1, 2, 3, 4, 5, 6, 0].filter((d) => h.days.map(Number).includes(d)).map((d) => DAY_NAMES[d]).join('·') + (h.weekly ? ' 중 1회' : '');
   function add() {
     if (!f.title.trim()) return toast('할 일 이름을 입력하세요', 'Memo');
-    const id = uid('h');
-    db.set(`kids/${kid.id}/habits/${id}`, { id, title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: [...f.days].sort(), weekly: !!f.weekly && f.days.length > 1, active: true, order: 5 });
+    const data = { title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: f.days.length ? [...f.days].sort() : null, weekly: !!f.weekly && f.days.length > 1 };
+    if (editId) {
+      db.update(`kids/${kid.id}/habits/${editId}`, data);
+      toast('반복 할 일을 수정했어요', 'Spiral calendar');
+    } else {
+      const id = uid('h');
+      db.set(`kids/${kid.id}/habits/${id}`, { id, ...data, active: true, order: 5 });
+      toast('반복 할 일을 추가했어요', 'Spiral calendar');
+    }
     setF(blank);
-    toast('반복 할 일을 추가했어요', 'Spiral calendar');
+    setEditId(null);
   }
   return html`<section class="card">
     <div class="card-h"><${Emo} name="Spiral calendar" size=${30} /><div class="grow"><h3>반복 할 일 · 습관</h3><div class="muted small">요일을 정하면 해당 요일마다 할 일에 자동으로 들어가요</div></div></div>
     ${habits.map((h) => html`<div class="list-row" key=${h.id}><${Subj} s=${h.subject || '생활'} /><div class="grow"><b class="small">${h.title}</b><div class="tiny muted">${dayText(h)} · +${h.talents ?? 1}</div></div>
+      <button class="icon-btn sm" title="수정" onClick=${() => startEdit(h)}><${Icon} name="pencil" size=${15} /></button>
       <button class="btn sm" onClick=${() => db.set(`kids/${kid.id}/habits/${h.id}/active`, !h.active)}>${h.active ? '켜짐' : '꺼짐'}</button>
       <button class="icon-btn sm" onClick=${() => db.remove(`kids/${kid.id}/habits/${h.id}`)}><${Icon} name="trash-2" size=${15} /></button></div>`)}
     <div class="stack" style="margin-top:10px">
@@ -237,7 +267,7 @@ function HabitAdmin({ kid }) {
       </div>
       <div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<button key=${d} class=${'day ' + (f.days.includes(d) ? 'on' : '')} onClick=${() => set('days', f.days.includes(d) ? f.days.filter((x) => x !== d) : [...f.days, d])}>${DAY_NAMES[d]}</button>`)}<span class="small muted" style="align-self:center">${f.days.length ? '' : '선택 안 하면 매일'}</span></div>
       ${f.days.length > 1 && html`<label class="row small"><input type="checkbox" checked=${f.weekly} onChange=${(e) => set('weekly', e.target.checked)} />선택한 요일 중 한 번만 하면 완료 (주 1회)</label>`}
-      <button class="btn primary" onClick=${add}>추가</button>
+      <div class="row"><button class="btn primary grow" onClick=${add}>${editId ? '수정 저장' : '추가'}</button>${editId && html`<button class="btn" onClick=${() => { setEditId(null); setF(blank); }}>취소</button>`}</div>
     </div>
   </section>`;
 }
@@ -408,10 +438,15 @@ function SettingsAdmin({ kids }) {
           <div class="field"><label>부모 PIN (4자리)</label><input class="input" inputmode="numeric" maxlength="4" value=${pin} onInput=${(e) => setPin(e.target.value.replace(/\D/g, ''))} /></div>
           <button class="btn" onClick=${() => { if (pin.length !== 4) return toast('4자리 숫자로 입력하세요', 'Memo'); db.set('settings/pin', pin); toast('PIN을 변경했어요', 'Locked'); }}>PIN 저장</button>
         </div>
+        <hr class="sep" />
+        <${PushSettings} />
+        <hr class="sep" />
         <div class="field"><label>날씨 지역</label><select class="select" value=${s.cityId} onChange=${(e) => db.set('settings/cityId', e.target.value)}>${KOREAN_CITIES.map((c) => html`<option value=${c.id}>${c.name}</option>`)}</select></div>
         <label class="row small"><input type="checkbox" checked=${mute} onChange=${(e) => { setMute(e.target.checked); localStorage.setItem('kq2_mute', e.target.checked ? '1' : '0'); }} />이 기기 효과음 끄기</label>
         <hr class="sep" />
-        <div class="label">아이 프로필</div>
+        <div class="label">엄마·아빠 프로필 (가족톡 사진)</div>
+        <${ParentProfiles} />
+        <div class="label" style="margin-top:6px">아이 프로필 <span class="tiny muted">· 가족톡 사진은 지금 키우는 펫이에요</span></div>
         ${kids.map((k) => html`<div class="list-row" key=${k.id}><b class="grow">${k.profile.name}</b>
           <select class="select" style="width:auto;height:36px" value=${k.profile.grade} onChange=${(e) => db.set(`kids/${k.id}/profile/grade`, Number(e.target.value))}>${[1, 2, 3, 4, 5, 6].map((g) => html`<option value=${g}>${g}학년</option>`)}</select>
           <select class="select" style="width:auto;height:36px" value=${k.profile.colorId} onChange=${(e) => db.set(`kids/${k.id}/profile/colorId`, e.target.value)}>${KID_COLORS.map((c) => html`<option value=${c.id}>${c.name}</option>`)}</select></div>`)}
@@ -422,5 +457,50 @@ function SettingsAdmin({ kids }) {
         </div>
       </div>
     </section>
+  </div>`;
+}
+
+
+// ---------- 엄마·아빠 프로필 캐릭터 ----------
+function ParentProfiles() {
+  const [open, setOpen] = useState(null);
+  return html`<div class="stack" style="gap:8px">
+    ${PARENTS.map((p) => {
+      const m = memberInfo(p.id);
+      return html`<div class="list-row" key=${p.id}>
+        <button onClick=${() => setOpen(p.id)} title="캐릭터 바꾸기"><${Avatar} id=${p.id} size=${44} /></button>
+        <input class="input" style="height:38px;max-width:140px" value=${m.name} onChange=${(e) => db.set(`settings/members/${p.id}/name`, e.target.value.trim().slice(0, 8) || null)} />
+        <span class="grow"></span>
+        <button class="btn sm" onClick=${() => setOpen(p.id)}><${Icon} name="smile" size=${16} />캐릭터 선택</button>
+      </div>`;
+    })}
+    ${open && html`<${Modal} title=${memberInfo(open).name + ' 캐릭터 선택'} icon=${memberInfo(open).emo} onClose=${() => setOpen(null)}>
+      <div class="avatar-grid">${PARENT_AVATARS.map((a) => html`<button key=${a} class=${memberInfo(open).emo === a ? 'on' : ''} onClick=${() => { db.set(`settings/members/${open}/avatar`, a); setOpen(null); toast('프로필 캐릭터를 바꿨어요', a); }}><img src=${E(a)} alt="" /></button>`)}</div>
+    <//>`}
+  </div>`;
+}
+
+// ---------- 내일 날씨 푸시 알림 (GitHub Actions + ntfy) ----------
+const PUSH_TIMES = ['18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
+function PushSettings() {
+  const s = M.settings();
+  const push = s.push || {};
+  const time = push.time || '21:00';
+  const topic = push.topic || '';
+  const enabled = push.enabled !== false;
+  useEffect(() => {
+    if (!push.topic) {
+      const arr = new Uint8Array(6);
+      crypto.getRandomValues(arr);
+      db.update('settings/push', { topic: 'kidquest-' + Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join(''), time, enabled: true });
+    }
+  }, []);
+  return html`<div class="stack" style="gap:8px">
+    <div class="label">내일 날씨 푸시 알림</div>
+    <div class="form-grid">
+      <div class="field"><label>알림 시간 (전날 저녁)</label><select class="select" value=${time} onChange=${(e) => db.set('settings/push/time', e.target.value)}>${PUSH_TIMES.map((t) => html`<option value=${t}>${t}</option>`)}</select></div>
+      <label class="row small" style="height:46px"><input type="checkbox" checked=${enabled} onChange=${(e) => db.set('settings/push/enabled', e.target.checked)} />알림 켜기</label>
+    </div>
+    <div class="tip small"><${Icon} name="bell" size=${16} /><div>폰·패드에 무료 앱 <b>ntfy</b>를 설치하고 <b>+</b> 를 눌러 토픽 <b class="num" style="user-select:all">${topic || '(생성 중)'}</b> 을 구독하면, 매일 ${time}에 내일 날씨·준비물 알림이 와요. (서버 일정에 따라 최대 15분 정도 늦을 수 있어요)</div></div>
   </div>`;
 }
