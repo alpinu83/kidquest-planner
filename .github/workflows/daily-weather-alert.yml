@@ -1,0 +1,47 @@
+name: Daily Tomorrow Weather & Outfit Alert
+
+on:
+  schedule:
+    # 매일 오후 8시 (KST = UTC+9 -> 11:00 UTC) 자동 실행
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-weather-alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch tomorrow forecast from Open-Meteo and notify iPad via ntfy.sh
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          CITY_LAT: ${{ vars.CITY_LAT || '37.5665' }}
+          CITY_LON: ${{ vars.CITY_LON || '126.9780' }}
+        run: |
+          if [ -z "$NTFY_TOPIC" ]; then
+            echo "NTFY_TOPIC secret is not configured. Skipping."
+            exit 0
+          fi
+
+          JSON=$(curl -sS "https://api.open-meteo.com/v1/forecast?latitude=${CITY_LAT}&longitude=${CITY_LON}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=2")
+
+          MSG=$(python3 -c '
+          import json, os, sys
+          data = json.loads(sys.stdin.read())["daily"]
+          tmin = round(data["temperature_2m_min"][1])
+          tmax = round(data["temperature_2m_max"][1])
+          prob = data["precipitation_probability_max"][1] or 0
+          code = data["weather_code"][1]
+          tips = []
+          if prob >= 40 or code >= 51:
+              tips.append(f"우산 필수 (강수확률 {prob}%)")
+          if tmin <= 4:
+              tips.append("두꺼운 외투/패딩 챙기기")
+          elif tmin <= 12:
+              tips.append("따뜻한 겉옷 챙기기")
+          if tmax - tmin >= 10:
+              tips.append("일교차 큼 (겉옷 겹쳐입기)")
+          if not tips:
+              tips.append("비 걱정 없는 쾌적한 날씨")
+          print(f"내일 기온 {tmin}°C~{tmax}°C, 강수확률 {prob}%\n준비물: " + ", ".join(tips) + "\n오늘 숙제 완료 체크도 잊지 마세요!")
+          ' <<< "$JSON")
+
+          curl -sS -H "Title: 내일 등교 날씨 & 준비물 알림 (KidQuest)" -d "$MSG" "https://ntfy.sh/${NTFY_TOPIC}"
