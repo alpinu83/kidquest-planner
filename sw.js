@@ -2,7 +2,7 @@
 // - 앱 코드(HTML/JS/CSS): 네트워크 우선 → 업데이트가 바로 반영되고, 오프라인이면 캐시 사용
 // - 이미지·폰트·라이브러리: 캐시 우선 (빠른 로딩)
 // - Firebase 실시간 동기화 요청은 가로채지 않음
-const VERSION = 'kq-2.0.1';
+const VERSION = 'kq-2.1.0';
 const CORE = `${VERSION}-core`;
 const ASSETS = `${VERSION}-assets`;
 
