@@ -468,3 +468,190 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .stat-tile > div { min-width: 0; }
 @media (max-width: 640px) { .stat-tile { padding: 12px; gap: 8px; } .stat-tile .v { font-size: 18px; } .stat-tile img { width: 34px; height: 34px; } }
 @media (max-width: 860px) { .g-3.keep { grid-template-columns: repeat(3, minmax(0, 1fr)); } .g-3.keep .stat-tile { flex-direction: column; text-align: center; padding: 10px 6px; gap: 4px; } .g-3.keep .stat-tile .l { white-space: normal; font-size: 11.5px; } }
+
+
+/* =====================================================================
+   KidQuest 2.1 — 한 화면 레이아웃 (스크롤 최소화) · 가족톡 · 프로필
+   ===================================================================== */
+.shell { height: 100dvh; min-height: 0; overflow: hidden; }
+.main { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; padding: 18px 24px 16px; }
+.topbar { margin-bottom: 12px; flex: none; flex-wrap: nowrap; }
+.topbar h1 { font-size: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+.page.no-pad { overflow: hidden; }
+.fit { height: 100%; min-height: 0; }
+.grid { gap: 14px; }
+.grid.fit { grid-auto-rows: minmax(0, 1fr); }
+.fill-row { flex: 1; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+.col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.col > .card.fill { flex: 1; }
+.card { padding: 18px; }
+.card.tight { padding: 14px; }
+.card-h { margin-bottom: 12px; }
+.card.fill { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.card.fill > .card-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0 -6px; padding: 0 6px; }
+.only-phone { display: none !important; }
+.avatar-btn { display: grid; place-items: center; flex: none; }
+.seg.block { display: flex; width: 100%; }
+.seg.block button { flex: 1; padding: 0 6px; }
+
+/* 홈 */
+.home { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; }
+.home-grid { display: grid; gap: 14px; min-height: 0; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.home-grid > * { min-height: 0; }
+@media (max-width: 1100px) {
+  .home-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .home-grid > :first-child { grid-row: span 2; }
+}
+.hero-compact { min-height: 0; height: 150px; padding: 18px 22px; border-radius: 24px; }
+.hero-compact .hero-text { position: relative; z-index: 2; max-width: 62%; }
+.hero-compact h2 { font-size: 22px; margin-top: 2px; }
+.hero-compact .hero-pet { width: 180px; height: 180px; right: 12px; bottom: -22px; }
+.hero-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.28); overflow: hidden; margin-top: 10px; max-width: 360px; }
+.hero-bar i { display: block; height: 100%; background: #fff; border-radius: inherit; transition: width .8s var(--ease); }
+.glass.sm { padding: 5px 11px; border-radius: 11px; font-size: 13px; font-weight: 700; color: #fff; }
+.weather-strip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; }
+.weather-strip img { width: 32px; height: 32px; flex: none; }
+.weather-strip .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.panel > .card.fill, .panel > .stack { flex: 1; min-height: 0; }
+.panel > .stack > .card.fill { flex: 1; }
+
+/* 펫 */
+.pet-card { gap: 6px; }
+.pet-stage-wrap { flex: 1; min-height: 150px; display: flex; align-items: center; justify-content: center; }
+.pet-stage-wrap .pet-stage { width: auto; height: 100%; max-width: 100%; max-height: 420px; }
+.dex { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.food-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+
+/* 시간표 */
+.week-box { height: 100%; overflow: hidden; }
+
+/* 대시보드 (부모) */
+.overview { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; height: 100%; min-height: 0; }
+
+/* 동기화 상태: 구석에 작게 */
+.corner-status { position: fixed; right: 14px; bottom: calc(10px + var(--safe-b)); display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); opacity: .85; z-index: 5; }
+.corner-status .sync, .corner-mini .sync { font-size: 11px; }
+.corner-mini { padding: 0 14px; }
+
+/* 시작 화면 */
+.picker-title { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: clamp(32px, 6vw, 46px) !important; }
+.picker-title .brand-mark { width: 46px; height: 46px; border-radius: 15px; }
+.kid-cards { margin-top: 24px; }
+.kid-card { min-height: 250px; }
+.parent-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+.parent-tile { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #fff; border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); text-align: left; transition: transform .2s var(--ease); }
+.parent-tile:active { transform: scale(.98); }
+.tile-badge { position: absolute; top: -7px; right: -7px; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 13px; background: #EF4444; color: #fff; font-size: 13px; font-weight: 800; display: grid; place-items: center; z-index: 5; box-shadow: 0 0 0 3px #fff; }
+.tab { position: relative; }
+.tab-badge { position: absolute; top: 2px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #EF4444; color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+
+/* 프로필 사진 (카톡 프사 모양) */
+.avatar { display: inline-grid; place-items: center; border-radius: 38%; overflow: hidden; flex: none; vertical-align: middle; }
+.avatar img { width: 80%; height: 80%; object-fit: contain; }
+.avatar-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.avatar-grid button { aspect-ratio: 1; border-radius: 16px; border: 2px solid var(--line); background: var(--surface-2); display: grid; place-items: center; }
+.avatar-grid button.on { border-color: var(--accent); background: var(--accent-soft); }
+.avatar-grid img { width: 70%; height: 70%; }
+.who-btn { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 18px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface-2); }
+
+/* 가족톡 */
+.talk { height: 100%; display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow); }
+.talk-top { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none; }
+.talk-top .grow { min-width: 0; }
+.talk-top .tiny { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.talk-members { display: flex; }
+.talk-members .avatar + .avatar { margin-left: -8px; }
+.talk-members .avatar { border: 2px solid #fff; }
+.talk-list { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 14px 14px; background: #C9D8E7; }
+.talk-list .empty { color: #4B5563; }
+.talk-day { text-align: center; margin: 12px 0 6px; }
+.talk-day span { display: inline-block; background: rgba(23, 26, 44, .18); color: #fff; font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 999px; }
+.talk-row { display: flex; gap: 8px; margin-top: 4px; }
+.talk-row.head { margin-top: 12px; }
+.talk-row.mine { justify-content: flex-end; }
+.talk-av { width: 40px; flex: none; }
+.talk-col { max-width: 74%; min-width: 0; }
+.talk-row.mine .talk-col { display: flex; flex-direction: column; align-items: flex-end; }
+.talk-name { font-size: 12.5px; color: #374151; margin: 0 0 3px 2px; font-weight: 700; }
+.talk-line { display: flex; align-items: flex-end; gap: 5px; }
+.talk-bubble { background: #fff; padding: 8px 12px; border-radius: 16px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgba(0,0,0,.06); }
+.talk-row.other.head .talk-bubble { border-top-left-radius: 5px; }
+.talk-row.mine .talk-bubble { color: #fff; }
+.talk-row.mine.head .talk-bubble { border-top-right-radius: 5px; }
+.talk-meta { display: flex; flex-direction: column; align-items: flex-end; font-size: 10.5px; color: #4B5563; line-height: 1.25; flex: none; }
+.talk-row.other .talk-meta { align-items: flex-start; }
+.talk-meta b { color: #D97706; font-size: 11px; }
+.talk-sticker { width: 92px; height: 92px; }
+.talk-stickers { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; padding: 8px; border-top: 1px solid var(--line); background: #fff; flex: none; }
+.talk-stickers button { border-radius: 12px; padding: 4px; display: grid; place-items: center; }
+.talk-stickers button:active { background: var(--surface-2); }
+.talk-stickers img { width: 42px; height: 42px; }
+.talk-input { display: flex; gap: 8px; align-items: flex-end; padding: 10px; border-top: 1px solid var(--line); background: #fff; flex: none; }
+.talk-input .textarea { min-height: 44px; height: 44px; padding: 10px 12px; resize: none; flex: 1; line-height: 1.4; }
+.talk-input .btn { height: 44px; padding: 0 14px; }
+.icon-btn.on { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* 태블릿 세로 · 폰: 사이드바 대신 하단 탭 */
+@media (max-width: 1023px) {
+  .main { padding: 12px 14px calc(86px + var(--safe-b)); }
+  .only-phone { display: grid !important; }
+  .tabbar { left: 10px; right: 10px; bottom: calc(8px + var(--safe-b)); padding: 5px; }
+  .tab { padding: 6px 0; font-size: 10.5px; }
+  .topbar h1 { font-size: 20px; }
+}
+@media (max-width: 700px) {
+  .main { padding: 10px 10px calc(80px + var(--safe-b)); }
+  .topbar { gap: 8px; margin-bottom: 8px; }
+  .topbar h1 { font-size: 18px; }
+  .topbar .sub { display: none; }
+  .pill-talent { height: 34px; font-size: 15px; padding: 0 10px 0 4px; }
+  .pill-talent img { width: 26px; height: 26px; }
+  .pill-streak { height: 34px; padding: 0 9px 0 4px; font-size: 14px; }
+  .pill-streak img { width: 22px; height: 22px; }
+  .card { padding: 14px; border-radius: 20px; }
+  .card-h { margin-bottom: 10px; }
+  .card-h h2, .card-h h3 { font-size: 16px; }
+  .home { grid-template-rows: auto auto auto minmax(0, 1fr); gap: 10px; }
+  .hero-compact { height: 118px; padding: 14px 16px; border-radius: 20px; }
+  .hero-compact h2 { font-size: 18px; }
+  .hero-compact .hero-text { max-width: 64%; }
+  .hero-compact .hero-pet { width: 132px; height: 132px; right: -4px; bottom: -16px; opacity: 1; }
+  .hero-compact .glass.sm { padding: 4px 8px; font-size: 12px; }
+  .grid.fit { grid-auto-rows: auto; }
+  .hide-phone { display: none !important; }
+  .task { padding: 11px 12px; gap: 10px; }
+  .picker { padding: 16px 14px 40px; }
+  .kid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+  .kid-card { min-height: 220px; padding: 14px; border-radius: 22px; }
+  .kid-card h2 { font-size: 22px; }
+  .kid-card .kc-pet { position: relative; right: auto; bottom: auto; width: 116px; height: 116px; margin: 0 auto; }
+  .kid-card .kc-stat { padding: 4px 7px; font-size: 12px; }
+  .parent-tiles { gap: 10px; }
+  .parent-tile { padding: 10px; gap: 8px; border-radius: 18px; }
+  .parent-tile .avatar { width: 42px !important; height: 42px !important; }
+  .talk { border-radius: 18px; }
+  .talk-col { max-width: 80%; }
+  .overview { display: flex; flex-direction: column; height: auto; }
+  .overview .card.fill { max-height: 380px; }
+  .avatar-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .stat-tile { padding: 10px; }
+}
+@media (max-height: 760px) and (min-width: 701px) {
+  .hero-compact { height: 128px; }
+  .hero-compact .hero-pet { width: 150px; height: 150px; }
+}
+
+.kid-card .tile-badge { top: 14px; right: 14px; box-shadow: 0 0 0 2px rgba(255,255,255,.7); }
+
+@media (min-width: 701px) {
+  .overview > .grid.g-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview > .grid.g-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); min-height: 230px; }
+  .grid.g-2.fill-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.overview .stat-tile { flex-direction: column; text-align: center; gap: 2px; padding: 10px 6px; }
+.overview .stat-tile img { width: 34px; height: 34px; }
+.overview .stat-tile .v { font-size: 19px; white-space: nowrap; }
+.week-box { overflow: auto; }
