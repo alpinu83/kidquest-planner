@@ -2,26 +2,28 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="KidQuest" />
-  <meta name="theme-color" content="#7C3AED" />
-  <title>KidQuest · Bella & Wanny 성장 스케줄러</title>
+  <meta name="theme-color" content="#F4F5FA" />
+  <meta name="description" content="Bella & Wanny 가족 학습 플래너 · 미션, 영단어, 달란트로 키우는 3D 펫" />
+  <title>KidQuest · 우리 가족 성장 플래너</title>
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/icon-180.png" />
   <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
-  <link rel="stylesheet" href="./styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/confetti.browser.min.js" defer></script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+  <link rel="stylesheet" href="./styles/app.css?v=2.0.0" />
 </head>
 <body>
   <div id="app"></div>
-  <script type="module" src="./js/app.js"></script>
+  <noscript>KidQuest는 JavaScript가 필요해요.</noscript>
+  <script type="module" src="./js/app.js?v=2.0.0"></script>
   <script>
-    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
-      });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
     }
   </script>
 </body>

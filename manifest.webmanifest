@@ -1,18 +1,17 @@
 {
-  "name": "KidQuest · Bella & Wanny 성장 스케줄러",
+  "name": "KidQuest · 우리 가족 성장 플래너",
   "short_name": "KidQuest",
-  "description": "숙제, 하교 후 학원 시간표, 내일 날씨 알림, 캐릭터 성장 컬렉션, 맞춤 영단어 학습 앱",
+  "description": "숙제·창의 미션·영단어를 하면 달란트를 받고, 달란트로 3D 펫을 전설까지 키우는 가족 학습 앱",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#F6F7FB",
-  "theme_color": "#7C3AED",
+  "background_color": "#F4F5FA",
+  "theme_color": "#F4F5FA",
   "orientation": "any",
+  "lang": "ko",
   "icons": [
-    {
-      "src": "./icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
