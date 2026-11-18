@@ -212,15 +212,33 @@ function WorkbookAdmin({ kid }) {
 }
 
 function HabitAdmin({ kid }) {
-  const habits = Object.values(kid.habits || {}).filter(Boolean);
-  const [t, setT] = useState('');
+  const habits = Object.values(kid.habits || {}).filter(Boolean).sort((a, b) => (a.order ?? 9) - (b.order ?? 9));
+  const blank = { title: '', subject: '생활', talents: 1, days: [], weekly: false };
+  const [f, setF] = useState(blank);
+  const set = (k, v) => setF({ ...f, [k]: v });
+  const dayText = (h) => !h.days || !h.days.length ? '매일' : [1, 2, 3, 4, 5, 6, 0].filter((d) => h.days.map(Number).includes(d)).map((d) => DAY_NAMES[d]).join('·') + (h.weekly ? ' 중 1회' : '');
+  function add() {
+    if (!f.title.trim()) return toast('할 일 이름을 입력하세요', 'Memo');
+    const id = uid('h');
+    db.set(`kids/${kid.id}/habits/${id}`, { id, title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: [...f.days].sort(), weekly: !!f.weekly && f.days.length > 1, active: true, order: 5 });
+    setF(blank);
+    toast('반복 할 일을 추가했어요', 'Spiral calendar');
+  }
   return html`<section class="card">
-    <div class="card-h"><${Emo} name="Sparkles" size=${30} /><div class="grow"><h3>매일 생활 습관</h3><div class="muted small">매일 할 일에 자동으로 들어가요 (+1)</div></div></div>
-    ${habits.map((h) => html`<div class="list-row" key=${h.id}><span class="grow small">${h.title}</span>
+    <div class="card-h"><${Emo} name="Spiral calendar" size=${30} /><div class="grow"><h3>반복 할 일 · 습관</h3><div class="muted small">요일을 정하면 해당 요일마다 할 일에 자동으로 들어가요</div></div></div>
+    ${habits.map((h) => html`<div class="list-row" key=${h.id}><${Subj} s=${h.subject || '생활'} /><div class="grow"><b class="small">${h.title}</b><div class="tiny muted">${dayText(h)} · +${h.talents ?? 1}</div></div>
       <button class="btn sm" onClick=${() => db.set(`kids/${kid.id}/habits/${h.id}/active`, !h.active)}>${h.active ? '켜짐' : '꺼짐'}</button>
       <button class="icon-btn sm" onClick=${() => db.remove(`kids/${kid.id}/habits/${h.id}`)}><${Icon} name="trash-2" size=${15} /></button></div>`)}
-    <div class="row" style="margin-top:10px"><input class="input" placeholder="예: 양치 후 치실하기" value=${t} onInput=${(e) => setT(e.target.value)} />
-      <button class="btn" onClick=${() => { if (!t.trim()) return; const id = uid('h'); db.set(`kids/${kid.id}/habits/${id}`, { id, title: t.trim(), talents: 1, active: true }); setT(''); }}>추가</button></div>
+    <div class="stack" style="margin-top:10px">
+      <div class="form-grid">
+        <div class="field" style="grid-column:span 2"><label>할 일</label><input class="input" placeholder="예: 구몬 하루 분량 풀기" value=${f.title} onInput=${(e) => set('title', e.target.value)} /></div>
+        <div class="field"><label>과목</label><select class="select" value=${f.subject} onChange=${(e) => set('subject', e.target.value)}>${['생활', '수학', '영어', '국어', '학습지', '과학', '숙제'].map((s) => html`<option>${s}</option>`)}</select></div>
+        <div class="field"><label>달란트</label><input class="input" type="number" min="0" max="10" value=${f.talents} onInput=${(e) => set('talents', e.target.value)} /></div>
+      </div>
+      <div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<button key=${d} class=${'day ' + (f.days.includes(d) ? 'on' : '')} onClick=${() => set('days', f.days.includes(d) ? f.days.filter((x) => x !== d) : [...f.days, d])}>${DAY_NAMES[d]}</button>`)}<span class="small muted" style="align-self:center">${f.days.length ? '' : '선택 안 하면 매일'}</span></div>
+      ${f.days.length > 1 && html`<label class="row small"><input type="checkbox" checked=${f.weekly} onChange=${(e) => set('weekly', e.target.checked)} />선택한 요일 중 한 번만 하면 완료 (주 1회)</label>`}
+      <button class="btn primary" onClick=${add}>추가</button>
+    </div>
   </section>`;
 }
 
