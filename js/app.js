@@ -111,9 +111,7 @@ function Picker({ onKid, onParent }) {
         ${kids.map((k) => {
           const pet = M.activePet(k);
           const c = KID_COLORS.find((x) => x.id === k.profile.colorId) || KID_COLORS[0];
-          const n = unreadCount(k.id);
           return html`<button key=${k.id} class="kid-card" style=${`background:radial-gradient(120% 120% at 100% 0%,rgba(255,255,255,.25),transparent 50%),linear-gradient(135deg,${c.color},${c.id === 'sky' ? '#22D3EE' : '#EC4899'})`} onClick=${() => onKid(k.id)}>
-            ${n > 0 && html`<span class="tile-badge">${n}</span>`}
             <div class="eyebrow" style="color:rgba(255,255,255,.8)">${k.profile.grade}학년${me === k.id ? ' · 이 기기' : ''}</div>
             <h2>${k.profile.name}</h2>
             <div class="kc-pet">${pet && html`<${PetStage} pet=${pet} mood=${M.petMood(pet)} showBubble=${false} />`}</div>
@@ -127,9 +125,7 @@ function Picker({ onKid, onParent }) {
       <div class="parent-tiles">
         ${PARENTS.map((p) => {
           const m = memberInfo(p.id);
-          const n = unreadCount(p.id);
           return html`<button key=${p.id} class="parent-tile" onClick=${() => onParent(p.id)}>
-            ${n > 0 && html`<span class="tile-badge">${n}</span>`}
             <${Avatar} id=${p.id} size=${52} />
             <div style="text-align:left"><b>${m.name}</b><div class="tiny muted">${me === p.id ? '이 기기 · ' : ''}부모 관리 · 가족톡</div></div>
           </button>`;
