@@ -1,6 +1,6 @@
 import { html, useState, useEffect, useMemo, Icon, Emo, Ring, Bar, Modal, toast, SyncBadge, Empty, Subj, Reward, TalentPill, Seg, usePhone } from './core.js';
 import { TalkView, WhoAmIParent, Avatar } from './talk.js';
-import { getMe, setMe, isParentId, unreadCount, memberInfo, PARENTS, PARENT_AVATARS } from '../members.js';
+import { getMe, setMe, isParentId, unreadCount, memberInfo, PARENTS, PARENT_AVATARS, memberIds, ensureTalkTopics, talkPushCfg, enableBadge, notifPermission } from '../members.js';
 import { PetStage, petDisplayName } from './pet.js';
 import { TaskList, DateNav } from './missions.js';
 import { WeekGrid } from './kid.js';
@@ -441,6 +441,8 @@ function SettingsAdmin({ kids }) {
         <hr class="sep" />
         <${PushSettings} />
         <hr class="sep" />
+        <${TalkPushSettings} />
+        <hr class="sep" />
         <div class="field"><label>날씨 지역</label><select class="select" value=${s.cityId} onChange=${(e) => db.set('settings/cityId', e.target.value)}>${KOREAN_CITIES.map((c) => html`<option value=${c.id}>${c.name}</option>`)}</select></div>
         <label class="row small"><input type="checkbox" checked=${mute} onChange=${(e) => { setMute(e.target.checked); localStorage.setItem('kq2_mute', e.target.checked ? '1' : '0'); }} />이 기기 효과음 끄기</label>
         <hr class="sep" />
@@ -502,5 +504,21 @@ function PushSettings() {
       <label class="row small" style="height:46px"><input type="checkbox" checked=${enabled} onChange=${(e) => db.set('settings/push/enabled', e.target.checked)} />알림 켜기</label>
     </div>
     <div class="tip small"><${Icon} name="bell" size=${16} /><div>폰·패드에 무료 앱 <b>ntfy</b>를 설치하고 <b>+</b> 를 눌러 토픽 <b class="num" style="user-select:all">${topic || '(생성 중)'}</b> 을 구독하면, 매일 ${time}에 내일 날씨·준비물 알림이 와요. (서버 일정에 따라 최대 15분 정도 늦을 수 있어요)</div></div>
+  </div>`;
+}
+
+// ---------- 가족톡 푸시 알림 ----------
+function TalkPushSettings() {
+  useEffect(() => { ensureTalkTopics(); }, []);
+  const [perm, setPerm] = useState(notifPermission());
+  return html`<div class="stack" style="gap:8px">
+    <div class="label">가족톡 푸시 알림 (보낸 사람 빼고 모두에게)</div>
+    <div class="tip small"><${Icon} name="bell" size=${16} /><div>각자 기기에 무료 앱 <b>ntfy</b>를 설치하고 <b>+</b> 를 눌러 자기 토픽을 구독하면, 톡이 올 때 바로 알림이 와요. 아이들은 가족톡 화면의 종 버튼에서도 볼 수 있어요.</div></div>
+    ${memberIds().map((id) => { const c = talkPushCfg(id); const m = memberInfo(id); return html`<div class="list-row" key=${id}>
+      <${Avatar} id=${id} size=${34} />
+      <div class="grow" style="min-width:0"><b class="small">${m.name}</b><div class="tiny muted num" style="user-select:all;word-break:break-all">${c.topic || '만드는 중…'}</div></div>
+      <button class="btn sm" onClick=${() => db.set(`settings/talkPush/${id}/enabled`, c.enabled === false)}>${c.enabled === false ? '꺼짐' : '켜짐'}</button>
+    </div>`; })}
+    <button class="btn sm" disabled=${perm === 'granted'} onClick=${async () => setPerm(await enableBadge())}><${Icon} name="bell" size=${16} />${perm === 'granted' ? '이 기기 아이콘 숫자 켜짐 ✓' : '이 기기 앱 아이콘에 안 읽은 톡 숫자 표시'}</button>
   </div>`;
 }
