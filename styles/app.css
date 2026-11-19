@@ -716,3 +716,15 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 @media (max-width: 700px) { .tmr { height: 34px; padding: 0 9px; } .tmr span { display: none; } .tmr.on span { display: none; } }
 
 .check.locked { border-style: dashed; opacity: .55; }
+
+/* 공부 리포트 */
+.report { display: flex; flex-direction: column; min-height: 100%; }
+.rep-main { flex: 1; min-height: 0; }
+.rep-main > .card { display: flex; flex-direction: column; min-height: 0; }
+.rep-chart { height: auto; }
+.grid.rep-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rep-tiles .stat-tile { padding: 12px 14px; }
+.rep-subj { display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 8px; margin: 6px 0; }
+.rep-bar { height: 10px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.rep-bar i { display: block; height: 100%; border-radius: 6px; }
+@media (max-width: 1023px) { .rep-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } .rep-tiles .stat-tile { padding: 10px; } }
