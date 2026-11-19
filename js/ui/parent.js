@@ -320,7 +320,7 @@ function TalentAdmin({ kid }) {
         <div class="row wrap">${PRAISE_PRESETS.map((p) => html`<button key=${p.label} class="chip" onClick=${() => grant(p.talents, p.label)}>${p.label} <b style="color:#9A6100">+${p.talents}</b></button>`)}</div>
         <hr class="sep" />
         <div class="card-h"><${Emo} name="Thinking face" size=${30} /><h3 class="grow">감점</h3>
-          <label class="row small" style="gap:6px"><input type="checkbox" checked=${pet} onChange=${(e) => setPet(e.target.checked)} />펫 경험치도 차감 (×10)</label></div>
+          <label class="row small" style="gap:6px"><input type="checkbox" checked=${pet} onChange=${(e) => setPet(e.target.checked)} />펫 경험치도 차감 (달란트×90)</label></div>
         <div class="row wrap">${PENALTY_PRESETS.map((p) => html`<button key=${p.label} class="chip" onClick=${() => grant(p.talents, p.label)}>${p.label} <b style="color:var(--bad)">${p.talents}</b></button>`)}</div>
         <hr class="sep" />
         <div class="form-grid">
