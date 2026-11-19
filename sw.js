@@ -2,7 +2,7 @@
 // - 앱 코드(HTML/JS/CSS): 네트워크 우선 → 업데이트가 바로 반영되고, 오프라인이면 캐시 사용
 // - 이미지·폰트·라이브러리: 캐시 우선 (빠른 로딩)
 // - Firebase 실시간 동기화 요청은 가로채지 않음
-const VERSION = 'kq-2.1.0';
+const VERSION = 'kq-2.4.0';
 const CORE = `${VERSION}-core`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -41,4 +41,27 @@ self.addEventListener('fetch', (e) => {
       return res;
     }).catch(() => caches.match(req).then((r) => r || caches.match('./index.html')))
   );
+});
+
+// ---------- 앱 푸시 알림 ----------
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { title: 'KidQuest', body: e.data ? e.data.text() : '' }; }
+  const jobs = [self.registration.showNotification(d.title || 'KidQuest', {
+    body: d.body || '', icon: './icons/icon-192.png', badge: './icons/icon-192.png', tag: d.tag || 'kq', renotify: true, data: { url: d.url || './' }
+  })];
+  if (typeof d.badge === 'number' && self.navigator && 'setAppBadge' in self.navigator) {
+    jobs.push(d.badge > 0 ? self.navigator.setAppBadge(d.badge) : self.navigator.clearAppBadge());
+  }
+  e.waitUntil(Promise.all(jobs).catch(() => {}));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) {
+      if (c.url.startsWith(self.registration.scope)) { c.postMessage({ type: 'kq-open', url }); return c.focus(); }
+    }
+    return self.clients.openWindow(url);
+  }));
 });
