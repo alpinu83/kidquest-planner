@@ -199,8 +199,10 @@ export function toggleTask(kidId, date, task) {
   const reward = task.talents === undefined || task.talents === null || task.talents === '' ? REWARDS.homework : Math.max(0, Number(task.talents) || 0);
   if (!task.done) {
     const { virtual, ...rest } = task;
+    const tm = timerOf(kid, date, task.id);
     const updates = {
-      [path]: { ...rest, done: true, doneAt: Date.now() },
+      ...(tm && tm.startedAt ? stopUpdates(kidId, date, task.id, tm) : {}),
+      [path]: { ...rest, done: true, doneAt: Date.now(), ...(tm ? { studySec: timerElapsed(tm) } : {}) },
       ...earn(kid, date, ledgerId, reward, `${task.subject ? '[' + task.subject + '] ' : ''}${task.title}`)
     };
     db.multi(updates);
@@ -210,9 +212,9 @@ export function toggleTask(kidId, date, task) {
     const acId = `allclear_${date.replace(/-/g, '')}`;
     if (allDone && !(getKid(kidId).ledger || {})[acId]) {
       db.set(`kids/${kidId}/ledger/${acId}`, { id: acId, ts: Date.now(), date, kind: 'bonus', talents: REWARDS.allClear, reason: '오늘 할 일 모두 완료 보너스' });
-      return { done: true, talents: reward, allClear: true };
+      return { done: true, talents: reward, allClear: true, studySec: tm ? timerElapsed(tm) : 0 };
     }
-    return { done: true, talents: reward };
+    return { done: true, talents: reward, studySec: tm ? timerElapsed(tm) : 0 };
   }
   const entry = (kid.ledger || {})[ledgerId];
   if (entry && talentBalance(kid) < entry.talents) {
@@ -421,4 +423,57 @@ export function weekSummary(kid, days = 7) {
     });
   }
   return out;
+}
+
+// ---------- 공부 타이머 (숙제·문제 풀이 시간 기록) ----------
+// 저장 위치: kids/{아이}/timers/{날짜}/{할일ID} = { total(초), startedAt(진행 중이면 시작 시각), title, subject, sessions }
+const STUDY_SUBJ = ['수학', '영어', '국어', '과학', '사회', '학습지', '숙제', '영단어'];
+const STUDY_WORDS = /(풀기|풀이|읽기|문제|숙제|공부|학습|쓰기|복습|예습|구몬|빠작|단어|독해|연산|p\.\s?\d)/;
+export function isStudyTask(t) {
+  return !!t && (t.source === 'workbook' || STUDY_SUBJ.includes(t.subject) || STUDY_WORDS.test(String(t.title || '')));
+}
+export function timerOf(kid, date, taskId) {
+  return (((kid && kid.timers) || {})[date] || {})[taskId] || null;
+}
+export function timerElapsed(tm, now = Date.now()) {
+  if (!tm) return 0;
+  return Math.max(0, Number(tm.total) || 0) + (tm.startedAt ? Math.max(0, Math.floor((now - tm.startedAt) / 1000)) : 0);
+}
+export function runningTimer(kid) {
+  for (const [date, day] of Object.entries((kid && kid.timers) || {})) {
+    for (const [id, tm] of Object.entries(day || {})) if (tm && tm.startedAt) return { date, id, tm };
+  }
+  return null;
+}
+function stopUpdates(kidId, date, id, tm) {
+  return { [`kids/${kidId}/timers/${date}/${id}/total`]: timerElapsed(tm), [`kids/${kidId}/timers/${date}/${id}/startedAt`]: null, [`kids/${kidId}/timers/${date}/${id}/stoppedAt`]: Date.now() };
+}
+export function startTimer(kidId, date, task) {
+  const kid = getKid(kidId);
+  const upd = {};
+  const run = runningTimer(kid);
+  let paused = null;
+  if (run && !(run.date === date && run.id === task.id)) { Object.assign(upd, stopUpdates(kidId, run.date, run.id, run.tm)); paused = run.tm.title || null; }
+  const cur = timerOf(kid, date, task.id) || {};
+  upd[`kids/${kidId}/timers/${date}/${task.id}`] = { total: Number(cur.total) || 0, startedAt: Date.now(), title: task.title, subject: task.subject || '', sessions: (cur.sessions || 0) + 1 };
+  db.multi(upd);
+  return { paused };
+}
+export function stopTimer(kidId, date, taskId) {
+  const tm = timerOf(getKid(kidId), date, taskId);
+  if (!tm || !tm.startedAt) return timerElapsed(tm);
+  const total = timerElapsed(tm);
+  db.multi(stopUpdates(kidId, date, taskId, tm));
+  return total;
+}
+export function studySecondsOn(kid, date) {
+  return sum(Object.values(((kid && kid.timers) || {})[date] || {}), (tm) => timerElapsed(tm));
+}
+export function fmtDur(sec, live = false) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (live) return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  if (h) return m ? `${h}시간 ${m}분` : `${h}시간`;
+  if (m) return `${m}분`;
+  return sec ? `${s}초` : '0분';
 }

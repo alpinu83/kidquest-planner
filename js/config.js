@@ -1,5 +1,5 @@
 // KidQuest 2.0 전역 설정
-export const APP_VERSION = '2.4.2';
+export const APP_VERSION = '2.5.0';
 
 // Firebase Realtime Database (가족 데이터 실시간 동기화)
 // 보안 규칙: /families/{가족코드}, /media/{가족코드} 경로는 24자 이상의 가족 코드를 아는 기기만 읽기/쓰기 가능
