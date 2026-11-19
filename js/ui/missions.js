@@ -33,6 +33,11 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
 
   function toggle(t) {
     if (!editable && date > todayKey(0)) return toast('미래의 숙제는 그날 체크할 수 있어요', 'Spiral calendar');
+    // 공부 할 일은 타이머 기록이 있어야 완료 가능 (아이 화면)
+    if (!editable && !t.done && M.isStudyTask(t) && M.timerElapsed(M.timerOf(kid, date, t.id)) <= 0) {
+      sfx('bad'); vibrate(30);
+      return toast('공부 타이머를 켜고 공부한 다음 체크할 수 있어요', 'Alarm clock', 3000);
+    }
     const r = M.toggleTask(kid.id, date, t);
     if (r.blocked) return toast(r.msg, 'Thinking face');
     if (r.done) {
@@ -53,7 +58,7 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
   if (!tasks.length && !allowKidAdd) return html`<${Empty} emoji="Party popper" title="오늘은 등록된 숙제가 없어요" sub="창의 미션에 도전해 볼까요?" />`;
   return html`<div>
     ${tasks.map((t) => html`<div key=${t.id} class=${'task ' + (t.done ? 'done' : '')}>
-      <button class=${'check ' + (t.done ? 'on' : '')} aria-label=${t.done ? '완료 취소' : '완료'} onClick=${() => toggle(t)}><${Icon} name="check" size=${20} stroke=${3} /></button>
+      <button class=${'check ' + (t.done ? 'on' : '') + (!editable && !t.done && M.isStudyTask(t) && M.timerElapsed(M.timerOf(kid, date, t.id)) <= 0 ? ' locked' : '')} aria-label=${t.done ? '완료 취소' : '완료'} onClick=${() => toggle(t)}><${Icon} name="check" size=${20} stroke=${3} /></button>
       <div class="grow">
         <div class="task-title">${t.title}</div>
         <div class="task-meta">
@@ -63,7 +68,7 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
           ${(() => { const sec = M.timerElapsed(M.timerOf(kid, date, t.id)) || t.studySec || 0; const running = run && run.date === date && run.id === t.id; return sec > 0 && !running ? html`<button class="tm-rec" title="눌러서 기록 지우기" onClick=${() => setResetFor({ t, sec })}><${Icon} name="timer" size=${13} />${M.fmtDur(sec)}</button>` : ''; })()}
         </div>
       </div>
-      ${M.isStudyTask(t) && !t.done && isToday && !editable && (() => { const running = run && run.date === date && run.id === t.id; const sec = M.timerElapsed(M.timerOf(kid, date, t.id)); return html`<button class=${'tmr' + (running ? ' on' : '')} aria-label=${running ? '타이머 정지' : '타이머 시작'} onClick=${() => timerTap(t)}>${running ? html`<i class="dot"></i><b class="num">${M.fmtDur(sec, true)}</b><span>정지</span>` : html`<${Icon} name="timer" size=${17} /><span>${sec > 0 ? '이어서' : '시작'}</span>`}</button>`; })()}
+      ${M.isStudyTask(t) && !t.done && date <= todayKey(0) && !editable && (() => { const running = run && run.date === date && run.id === t.id; const sec = M.timerElapsed(M.timerOf(kid, date, t.id)); return html`<button class=${'tmr' + (running ? ' on' : '')} aria-label=${running ? '타이머 정지' : '타이머 시작'} onClick=${() => timerTap(t)}>${running ? html`<i class="dot"></i><b class="num">${M.fmtDur(sec, true)}</b><span>정지</span>` : html`<${Icon} name="timer" size=${17} /><span>${sec > 0 ? '이어서' : '시작'}</span>`}</button>`; })()}
       ${Number(t.talents) > 0 && html`<${Reward} n=${t.talents} />`}
       ${editable && !t.done && html`<button class="icon-btn sm" title="내일로 미루기" onClick=${() => { M.postponeTask(kid.id, date, t); toast('내일로 옮겼어요', 'Spiral calendar'); }}><${Icon} name="arrow-right" size=${16} /></button>`}
       ${editable && html`<button class="icon-btn sm" title="삭제" onClick=${() => M.deleteTask(kid.id, date, t)}><${Icon} name="trash-2" size=${16} /></button>`}
