@@ -714,3 +714,5 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .tm-rec { display: inline-flex; align-items: center; gap: 3px; color: #0E7490; font-weight: 700; font-size: 12.5px; padding: 1px 7px; border-radius: 8px; background: #ECFEFF; border: 1px solid #A5F3FC; }
 .tm-rec:active { transform: scale(.95); }
 @media (max-width: 700px) { .tmr { height: 34px; padding: 0 9px; } .tmr span { display: none; } .tmr.on span { display: none; } }
+
+.check.locked { border-style: dashed; opacity: .55; }
