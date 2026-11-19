@@ -212,7 +212,7 @@ function MissionsTab({ kid }) {
   const tasks = M.tasksFor(kid, date);
   const tasksCard = html`<section class="card fill">
     <div class="card-h"><${Emo} name="Books" size=${28} /><div class="grow"><h2>숙제 · 할 일</h2><div class="muted small">완료 체크하면 달란트 획득</div></div></div>
-    <div class="card-body"><${TaskList} kid=${kid} date=${date} allowKidAdd=${isToday} /></div>
+    <div class="card-body"><${TaskList} kid=${kid} date=${date} /></div>
   </section>`;
   const creativeCard = html`<section class="card fill">
     <div class="card-h"><${Emo} name="Rocket" size=${28} /><div class="grow"><h2>창의 미션</h2><div class="small muted">매일 새로운 도전 3개</div></div>
