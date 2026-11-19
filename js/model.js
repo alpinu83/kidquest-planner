@@ -40,7 +40,8 @@ export function petXp(kid, petId) {
 }
 export function petsOf(kid) {
   return vals(kid.pets).map((p) => {
-    const xp = petXp(kid, p.id);
+    // 이미 전설이 된 펫은 기준이 바뀌어도 전설 유지
+    const xp = p.legendAt ? MAX_PET_XP : petXp(kid, p.id);
     return { ...p, xp, stage: stageForXp(xp).stage, species: speciesById(p.species) };
   }).sort((a, b) => (a.adoptedAt || 0) - (b.adoptedAt || 0));
 }
@@ -404,7 +405,7 @@ export function grantTalents(kidId, talents, reason, alsoPet = false) {
   const entry = { id, ts: Date.now(), date: todayKey(0), kind: talents >= 0 ? 'bonus' : 'penalty', talents: Number(talents), reason, by: 'parent' };
   if (alsoPet && talents < 0) {
     const pet = activePet(kid);
-    if (pet) { entry.petId = pet.id; entry.petXp = Number(talents) * 10; }
+    if (pet) { entry.petId = pet.id; entry.petXp = Number(talents) * 90; }
   }
   db.set(`kids/${kidId}/ledger/${id}`, entry);
 }
