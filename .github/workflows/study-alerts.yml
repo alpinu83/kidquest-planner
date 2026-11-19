@@ -1,0 +1,32 @@
+name: Homework Reminder & Weekly Study Report
+
+# 앱 설정(부모 관리 → 설정 → 숙제 알림 · 주간 리포트)의 시간에 맞춰 보냅니다.
+# - 남은 숙제 알림: 매일 (기본 20:00)  - 주간 공부 리포트: 일요일 (기본 20:30)
+# 15분마다 확인하므로 실제 도착은 설정 시각부터 15~20분 정도 늦을 수 있어요.
+on:
+  schedule:
+    # KST 17:00~23:45 (UTC 08:00~14:45) 동안 15분마다 확인
+    - cron: '*/15 8-14 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '지금 바로 보내기 (homework 또는 weekly)'
+        type: choice
+        options: ['', 'homework', 'weekly']
+        default: ''
+
+concurrency:
+  group: study-push
+  cancel-in-progress: false
+
+jobs:
+  send-study-alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Send homework reminder / weekly report (if it's time)
+        env:
+          FAMILY_CODE: ${{ secrets.FAMILY_CODE }}
+          FORCE: ${{ inputs.force }}
+        run: python3 scripts/study_push.py
