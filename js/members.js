@@ -81,10 +81,53 @@ export function sendTalk(me, payload) {
   const all = talkMsgs();
   if (all.length >= MAX_MSGS) all.slice(0, all.length - MAX_MSGS + 1).forEach((m) => { updates[`talk/msgs/${m.id}`] = null; });
   db.multi(updates);
+  notifyOthers(me, payload);
 }
 // 메시지별 안 읽은 사람 수 (카톡의 노란 숫자)
 export function unreadReaders(msg, ids = memberIds()) {
   let n = 0;
   for (const id of ids) if (id !== msg.by && lastRead(id) < msg.ts) n++;
   return n;
+}
+
+// ---------- 가족톡 푸시 알림 (ntfy · 보낸 사람 빼고 나머지 가족에게) ----------
+// 각자 폰·패드의 무료 ntfy 앱에서 자기 토픽을 구독하면, 앱이 꺼져 있어도 바로 알림이 와요.
+export function talkPushCfg(id) {
+  return ((((db.getState().settings || {}).talkPush) || {})[id]) || {};
+}
+function randHex(n) {
+  const a = new Uint8Array(n);
+  try { crypto.getRandomValues(a); } catch (_) { for (let i = 0; i < n; i++) a[i] = Math.floor(Math.random() * 256); }
+  return Array.from(a).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+export function ensureTalkTopics() {
+  const s = (db.getState().settings || {}).talkPush || {};
+  const add = {};
+  for (const id of memberIds()) if (!s[id] || !s[id].topic) add[id] = { topic: `kq-talk-${id}-${randHex(5)}`, enabled: true };
+  if (Object.keys(add).length) db.update('settings/talkPush', add);
+}
+export function talkLink(id) {
+  const base = location.origin + location.pathname;
+  return isParentId(id) ? `${base}#/parent/talk` : `${base}#/kid/${id}/talk`;
+}
+export function notifyOthers(me, payload) {
+  const from = memberInfo(me).name;
+  const body = payload.sticker ? '(스티커)' : String(payload.text || '').slice(0, 300);
+  for (const id of memberIds()) {
+    if (id === me) continue;
+    const cfg = talkPushCfg(id);
+    if (!cfg.topic || cfg.enabled === false) continue;
+    const q = `title=${encodeURIComponent('가족톡 · ' + from)}&tags=speech_balloon&click=${encodeURIComponent(talkLink(id))}`;
+    try { fetch(`https://ntfy.sh/${cfg.topic}?${q}`, { method: 'POST', body }).catch(() => {}); } catch (_) {}
+  }
+}
+
+// ---------- 앱 아이콘 숫자 (배지) ----------
+export const badgeSupported = () => typeof navigator !== 'undefined' && 'setAppBadge' in navigator;
+export function notifPermission() {
+  try { return typeof Notification === 'undefined' ? 'unsupported' : Notification.permission; } catch (_) { return 'unsupported'; }
+}
+export async function enableBadge() {
+  try { if (typeof Notification !== 'undefined' && Notification.permission === 'default') await Notification.requestPermission(); } catch (_) {}
+  return notifPermission();
 }
