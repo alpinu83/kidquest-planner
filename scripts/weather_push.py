@@ -1,10 +1,12 @@
 # KidQuest 내일 날씨·준비물 푸시 (GitHub Actions에서 15분마다 실행)
-# - 가족 설정(settings/push)의 알림 시간이 되면 하루 한 번만 ntfy 토픽으로 보냄
+# - 가족 설정(settings/push)의 알림 시간이 되면 하루 한 번만, 알림을 켠 가족 기기로 앱 알림을 보냄 (Cloudflare Worker 발송기)
 # - 알림 시간은 앱의 부모 관리 → 설정에서 바꿀 수 있음 (기본 21:00)
 import json, os, sys, urllib.request, urllib.parse, datetime
 
 DB = "https://kidquest-family-default-rtdb.asia-southeast1.firebasedatabase.app"
 FAMILY = os.environ.get("FAMILY_CODE", "").strip()
+PUSH_URL = os.environ.get("PUSH_URL", "").strip() or "https://kidquest-push.alpinu83.workers.dev/"
+APP_URL = "https://alpinu83.github.io/kidquest-planner/"
 FORCE = os.environ.get("FORCE", "") == "true"
 CITIES = {
     "seoul": (37.5665, 126.978, "서울"), "gangnam": (37.4979, 127.0276, "서울 강남·서초"), "bundang": (37.3827, 127.1189, "성남·분당"),
@@ -32,10 +34,6 @@ if not FAMILY:
 fam = get(f"{DB}/families/{FAMILY}.json") or {}
 settings = fam.get("settings") or {}
 push = settings.get("push") or {}
-topic = (push.get("topic") or os.environ.get("NTFY_TOPIC", "")).strip()
-if not topic:
-    print("No ntfy topic yet (open 부모 관리 → 설정 once).")
-    sys.exit(0)
 if push.get("enabled") is False and not FORCE:
     print("Push disabled.")
     sys.exit(0)
@@ -92,13 +90,14 @@ for kid in kids:
 msg = "\n".join(lines)
 print(msg)
 
+title = ("\u2602 " if "우산" in msg else "") + "내일 날씨·준비물"
 req = urllib.request.Request(
-    f"https://ntfy.sh/{topic}?title=" + urllib.parse.quote("내일 날씨·준비물 (KidQuest)"),
-    data=msg.encode("utf-8"),
+    PUSH_URL,
+    data=json.dumps({"family": FAMILY, "kind": "weather", "title": title, "text": msg, "base": APP_URL}).encode("utf-8"),
     method="POST",
-    headers={"Tags": "umbrella" if "우산" in msg else "sunny"},
+    headers={"Content-Type": "application/json", "User-Agent": "KidQuest-Weather/1.0"},
 )
-urllib.request.urlopen(req, timeout=20).read()
+print(urllib.request.urlopen(req, timeout=30).read().decode("utf-8")[:300])
 if not FORCE:
     put(f"{DB}/families/{FAMILY}/settings/push/lastSent.json", today)
 print("Sent.")
