@@ -1,6 +1,6 @@
 // Family Talk — 가족 단체 톡방 (실시간 동기화 · 안 읽은 숫자 · 스티커)
 import { html, useState, useEffect, useRef, useStore, Icon, Modal, toast } from './core.js';
-import { memberInfo, memberIds, talkMsgs, markRead, sendTalk, unreadReaders, PARENTS, ensureTalkTopics, talkPushCfg, enableBadge, notifPermission, badgeSupported } from '../members.js';
+import { memberInfo, memberIds, talkMsgs, markRead, sendTalk, unreadReaders, PARENTS, enablePush, testPush, thisDevicePush, notifPermission, pushSupported, isIOS, isStandalone } from '../members.js';
 import { E, hhmm, DAY_NAMES, sfx } from '../util.js';
 
 const STICKERS = ['Red heart', 'Smiling face with hearts', 'Party popper', 'Hundred points', 'Trophy', 'Thinking face', 'Sleeping face', 'Sparkles', 'Glowing star', 'Hot beverage', 'Books', 'Soccer ball'];
@@ -28,7 +28,6 @@ export function TalkView({ me }) {
   const [away, setAway] = useState(false); // 예전 메시지 보는 중 (아래에서 멀리 올라감)
   const [newCount, setNewCount] = useState(0);
   const [help, setHelp] = useState(false);
-  useEffect(() => { ensureTalkTopics(); }, []);
   const lastTs = msgs.length ? msgs[msgs.length - 1].ts : 0;
   const lastBy = msgs.length ? msgs[msgs.length - 1].by : null;
   const first = useRef(true);
@@ -135,24 +134,34 @@ export function WhoAmIParent({ onPick }) {
   </div>`;
 }
 
-// 알림 받는 방법 안내 (각자 기기에서)
-export function NotifyHelp({ me, onClose }) {
-  const cfg = talkPushCfg(me);
+// 이 기기에서 알림 받기 (앱 자체 푸시 + 아이콘 숫자)
+export function PushPanel({ me, compact = false }) {
+  useStore();
   const [perm, setPerm] = useState(notifPermission());
-  const topic = cfg.topic || '(만드는 중…)';
-  return html`<${Modal} title=${memberInfo(me).name + '의 가족톡 알림'} icon="Speech balloon" onClose=${onClose}>
-    <div class="stack" style="gap:12px">
-      <div class="tip small" style="flex-direction:column;align-items:flex-start;gap:6px">
-        <b>① 앱이 꺼져 있어도 푸시 알림 받기</b>
-        <div>이 기기에 무료 앱 <b>ntfy</b>를 설치 → <b>+</b> 누르고 아래 토픽을 입력해 구독하세요. 다른 가족이 톡을 보내면 바로 알림이 와요.</div>
-        <div class="row" style="width:100%"><input class="input" readonly value=${topic} onFocus=${(e) => e.target.select()} style="height:38px;font-size:14px" />
-          <button class="btn sm" onClick=${async () => { try { await navigator.clipboard.writeText(topic); toast('토픽을 복사했어요', 'Memo'); } catch (_) { toast('길게 눌러 복사하세요', 'Memo'); } }}>복사</button></div>
-      </div>
-      <div class="tip small" style="flex-direction:column;align-items:flex-start;gap:6px">
-        <b>② KidQuest 앱 아이콘에 안 읽은 톡 숫자 표시</b>
-        <div>홈 화면에 추가한 KidQuest 앱에서 아래 버튼을 눌러 알림을 허용하세요. ${badgeSupported() ? '' : '(이 브라우저는 아이콘 숫자를 지원하지 않아요. 홈 화면에 추가한 앱에서 눌러 주세요.)'}</div>
-        <button class="btn sm primary" disabled=${perm === 'granted'} onClick=${async () => setPerm(await enableBadge())}>${perm === 'granted' ? '허용됨 ✓' : perm === 'denied' ? '설정에서 알림을 허용해 주세요' : '알림·아이콘 숫자 허용'}</button>
-      </div>
+  const [busy, setBusy] = useState(false);
+  const mine = thisDevicePush();
+  const on = perm === 'granted' && mine;
+  const needHome = isIOS() && !isStandalone();
+  async function turnOn() {
+    setBusy(true);
+    const r = await enablePush(me);
+    setBusy(false);
+    setPerm(notifPermission());
+    if (r.ok) { toast('이 기기에서 알림을 받아요!', 'Speech balloon'); testPush(); }
+    else if (r.reason === 'ios-home') toast('홈 화면에 추가한 KidQuest 앱에서 눌러 주세요', 'Thinking face');
+    else if (r.reason === 'denied') toast('기기 설정에서 KidQuest 알림을 허용해 주세요', 'Thinking face');
+    else toast('알림을 켜지 못했어요' + (r.msg ? ': ' + r.msg : ''), 'Thinking face');
+  }
+  return html`<div class="stack" style="gap:10px">
+    ${needHome && html`<div class="tip small"><${Icon} name="info" size=${16} /><div>아이패드·아이폰은 <b>Safari 공유 → 홈 화면에 추가</b>한 뒤, 홈 화면의 <b>KidQuest 앱</b>에서 알림을 켤 수 있어요.</div></div>`}
+    ${!needHome && !pushSupported() && html`<div class="tip small">이 브라우저는 알림을 지원하지 않아요. 홈 화면에 추가한 앱이나 Chrome·Safari 최신 버전에서 열어 주세요.</div>`}
+    <div class="row wrap" style="gap:8px">
+      <button class="btn ${on ? '' : 'primary'}" disabled=${busy || needHome || !pushSupported()} onClick=${turnOn}><${Icon} name="bell" size=${18} />${on ? `알림 켜짐 ✓ (${memberInfo(mine.member).name})` : perm === 'denied' ? '기기 설정에서 알림 허용 필요' : '이 기기에서 알림 받기'}</button>
+      ${on && html`<button class="btn sm" onClick=${async () => { const r = await testPush(); toast(r && r.sent ? '테스트 알림을 보냈어요' : '보내지 못했어요', 'Speech balloon'); }}>테스트</button>`}
     </div>
-  <//>`;
+    ${!compact && html`<div class="tiny muted">켜 두면 가족톡이 오거나 내일 날씨 알림이 올 때 앱이 꺼져 있어도 알림이 오고, 앱 아이콘에 안 읽은 톡 숫자가 표시돼요.</div>`}
+  </div>`;
+}
+export function NotifyHelp({ me, onClose }) {
+  return html`<${Modal} title=${memberInfo(me).name + '의 알림'} icon="Speech balloon" onClose=${onClose}><${PushPanel} me=${me} /><//>`;
 }

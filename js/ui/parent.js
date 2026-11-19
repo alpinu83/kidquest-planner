@@ -1,6 +1,6 @@
 import { html, useState, useEffect, useMemo, Icon, Emo, Ring, Bar, Modal, toast, SyncBadge, Empty, Subj, Reward, TalentPill, Seg, usePhone } from './core.js';
-import { TalkView, WhoAmIParent, Avatar } from './talk.js';
-import { getMe, setMe, isParentId, unreadCount, memberInfo, PARENTS, PARENT_AVATARS, memberIds, ensureTalkTopics, talkPushCfg, enableBadge, notifPermission } from '../members.js';
+import { TalkView, WhoAmIParent, Avatar, PushPanel } from './talk.js';
+import { getMe, setMe, isParentId, unreadCount, memberInfo, PARENTS, PARENT_AVATARS, memberIds, pushDevices, deviceId } from '../members.js';
 import { PetStage, petDisplayName } from './pet.js';
 import { TaskList, DateNav } from './missions.js';
 import { WeekGrid } from './kid.js';
@@ -482,43 +482,41 @@ function ParentProfiles() {
   </div>`;
 }
 
-// ---------- 내일 날씨 푸시 알림 (GitHub Actions + ntfy) ----------
+// ---------- 내일 날씨 푸시 알림 (GitHub Actions → 앱 알림) ----------
 const PUSH_TIMES = ['18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
 function PushSettings() {
   const s = M.settings();
   const push = s.push || {};
   const time = push.time || '21:00';
-  const topic = push.topic || '';
   const enabled = push.enabled !== false;
-  useEffect(() => {
-    if (!push.topic) {
-      const arr = new Uint8Array(6);
-      crypto.getRandomValues(arr);
-      db.update('settings/push', { topic: 'kidquest-' + Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join(''), time, enabled: true });
-    }
-  }, []);
   return html`<div class="stack" style="gap:8px">
     <div class="label">내일 날씨 푸시 알림</div>
     <div class="form-grid">
       <div class="field"><label>알림 시간 (전날 저녁)</label><select class="select" value=${time} onChange=${(e) => db.set('settings/push/time', e.target.value)}>${PUSH_TIMES.map((t) => html`<option value=${t}>${t}</option>`)}</select></div>
       <label class="row small" style="height:46px"><input type="checkbox" checked=${enabled} onChange=${(e) => db.set('settings/push/enabled', e.target.checked)} />알림 켜기</label>
     </div>
-    <div class="tip small"><${Icon} name="bell" size=${16} /><div>폰·패드에 무료 앱 <b>ntfy</b>를 설치하고 <b>+</b> 를 눌러 토픽 <b class="num" style="user-select:all">${topic || '(생성 중)'}</b> 을 구독하면, 매일 ${time}에 내일 날씨·준비물 알림이 와요. (서버 일정에 따라 최대 15분 정도 늦을 수 있어요)</div></div>
+    <div class="tip small"><${Icon} name="bell" size=${16} /><div>알림을 켠 모든 기기로 매일 <b>${time}</b>에 내일 날씨·준비물·학원 일정을 보내요. (서버가 15분마다 확인해서 조금 늦을 수 있어요)</div></div>
   </div>`;
 }
 
-// ---------- 가족톡 푸시 알림 ----------
+// ---------- 알림 받는 기기 ----------
 function TalkPushSettings() {
-  useEffect(() => { ensureTalkTopics(); }, []);
-  const [perm, setPerm] = useState(notifPermission());
+  const devs = pushDevices();
+  const me = parentMeForSettings();
   return html`<div class="stack" style="gap:8px">
-    <div class="label">가족톡 푸시 알림 (보낸 사람 빼고 모두에게)</div>
-    <div class="tip small"><${Icon} name="bell" size=${16} /><div>각자 기기에 무료 앱 <b>ntfy</b>를 설치하고 <b>+</b> 를 눌러 자기 토픽을 구독하면, 톡이 올 때 바로 알림이 와요. 아이들은 가족톡 화면의 종 버튼에서도 볼 수 있어요.</div></div>
-    ${memberIds().map((id) => { const c = talkPushCfg(id); const m = memberInfo(id); return html`<div class="list-row" key=${id}>
-      <${Avatar} id=${id} size=${34} />
-      <div class="grow" style="min-width:0"><b class="small">${m.name}</b><div class="tiny muted num" style="user-select:all;word-break:break-all">${c.topic || '만드는 중…'}</div></div>
-      <button class="btn sm" onClick=${() => db.set(`settings/talkPush/${id}/enabled`, c.enabled === false)}>${c.enabled === false ? '꺼짐' : '켜짐'}</button>
-    </div>`; })}
-    <button class="btn sm" disabled=${perm === 'granted'} onClick=${async () => setPerm(await enableBadge())}><${Icon} name="bell" size=${16} />${perm === 'granted' ? '이 기기 아이콘 숫자 켜짐 ✓' : '이 기기 앱 아이콘에 안 읽은 톡 숫자 표시'}</button>
+    <div class="label">알림 받는 기기 (가족톡 · 내일 날씨)</div>
+    <${PushPanel} me=${me} compact=${true} />
+    ${devs.length === 0 ? html`<div class="tiny muted">아직 알림을 켠 기기가 없어요. 각자 기기의 가족톡 화면 종 버튼에서 켤 수 있어요.</div>`
+      : devs.map((d) => html`<div class="list-row" key=${d.id}>
+        <${Avatar} id=${d.member} size=${32} />
+        <div class="grow"><b class="small">${memberInfo(d.member).name}</b> <span class="tiny muted">· ${d.ua || '기기'}${d.id === deviceId() ? ' · 이 기기' : ''}</span><div class="tiny muted">${d.ts ? shortDate(new Date(d.ts).toISOString().slice(0, 10)) + ' 등록' : ''}</div></div>
+        <button class="icon-btn sm" title="알림 끄기" onClick=${() => db.remove(`pushSubs/${d.id}`)}><${Icon} name="trash-2" size=${14} /></button>
+      </div>`)}
   </div>`;
+}
+function parentMeForSettings() {
+  const m = getMe();
+  if (isParentId(m)) return m;
+  const s = sessionStorage.getItem('kq2_parent_me');
+  return isParentId(s) ? s : 'mom';
 }
