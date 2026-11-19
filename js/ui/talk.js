@@ -157,7 +157,6 @@ export function PushPanel({ me, compact = false }) {
     ${!needHome && !pushSupported() && html`<div class="tip small">이 브라우저는 알림을 지원하지 않아요. 홈 화면에 추가한 앱이나 Chrome·Safari 최신 버전에서 열어 주세요.</div>`}
     <div class="row wrap" style="gap:8px">
       <button class="btn ${on ? '' : 'primary'}" disabled=${busy || needHome || !pushSupported()} onClick=${turnOn}><${Icon} name="bell" size=${18} />${on ? `알림 켜짐 ✓ (${memberInfo(mine.member).name})` : perm === 'denied' ? '기기 설정에서 알림 허용 필요' : '이 기기에서 알림 받기'}</button>
-      ${on && html`<button class="btn sm" onClick=${async () => { const r = await testPush(); toast(r && r.sent ? '테스트 알림을 보냈어요' : '보내지 못했어요', 'Speech balloon'); }}>테스트</button>`}
     </div>
     ${!compact && html`<div class="tiny muted">켜 두면 가족톡이 오거나 내일 날씨 알림이 올 때 앱이 꺼져 있어도 알림이 오고, 앱 아이콘에 안 읽은 톡 숫자가 표시돼요.</div>`}
   </div>`;
