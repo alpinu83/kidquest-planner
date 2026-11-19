@@ -109,6 +109,7 @@ function Home({ kid, pet, setTab }) {
   const [mission, setMission] = useState(null);
   const [panel, setPanel] = useState('tasks');
   const earned = M.talentsEarnedOn(kid, today);
+  const studySec = M.studySecondsOn(kid, today);
   const academies = Object.values(kid.academies || {}).filter((a) => a && (a.days || []).map(Number).includes(dowOf(today)));
 
   const hero = html`<section class="hero hero-compact">
@@ -118,6 +119,7 @@ function Home({ kid, pet, setTab }) {
       <div class="hero-bar"><i style=${`width:${pct}%`}></i></div>
       <div class="row wrap" style="gap:8px;margin-top:10px">
         <span class="glass sm">오늘 +${earned} 달란트</span>
+        ${studySec >= 60 && html`<span class="glass sm">⏱ 공부 ${M.fmtDur(studySec)}</span>`}
         <button class="glass sm" onClick=${() => setTab('pet')}>${pet ? petDisplayName(pet) : '펫'} · ${mood === 'hungry' ? '배고파요!' : pet && pet.stage === 5 ? '전설' : pet ? STAGES[pet.stage].name : ''}</button>
       </div>
     </div>

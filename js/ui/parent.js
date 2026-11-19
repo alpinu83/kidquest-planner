@@ -94,7 +94,7 @@ function Overview({ kids, go }) {
             <div style="width:84px;height:84px;flex:none">${pet && html`<${PetStage} pet=${pet} mood=${M.petMood(pet)} showBubble=${false} />`}</div>
             <div class="grow">
               <div class="row"><h2 style="font-size:22px;font-weight:900;color:${color}">${k.profile.name}</h2><span class="badge">${k.profile.grade}학년</span></div>
-              <div class="small muted">${pet ? `${petDisplayName(pet)} · ${STAGES[pet.stage].name} · ${pet.xp} XP` : ''} · 연속 ${M.streakOf(k)}일</div>
+              <div class="small muted">${pet ? `${petDisplayName(pet)} · ${STAGES[pet.stage].name} · ${pet.xp} XP` : ''} · 연속 ${M.streakOf(k)}일${M.studySecondsOn(k, today) >= 60 ? ` · 오늘 공부 ${M.fmtDur(M.studySecondsOn(k, today))}` : ''}</div>
             </div>
             <${TalentPill} value=${M.talentBalance(k)} />
           </div>

@@ -8,6 +8,26 @@ import { E, uid, normalizeAnswer, speak, sfx, vibrate, compressImage, dayLabel, 
 export function TaskList({ kid, date, editable = false, compact = false, allowKidAdd = false }) {
   const tasks = M.tasksFor(kid, date);
   const [adding, setAdding] = useState('');
+  const isToday = date === todayKey(0);
+  const run = M.runningTimer(kid);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!run) return;
+    const iv = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(iv);
+  }, [run && run.id, run && run.date]);
+  function timerTap(t) {
+    const tm = M.timerOf(kid, date, t.id);
+    if (tm && tm.startedAt) {
+      const sec = M.stopTimer(kid.id, date, t.id);
+      sfx('good'); vibrate(15);
+      toast(`공부 시간 ${M.fmtDur(sec)} 기록했어요`, 'Alarm clock');
+    } else {
+      const r = M.startTimer(kid.id, date, t);
+      sfx('tap'); vibrate(10);
+      toast(r.paused ? `'${r.paused}' 타이머는 멈추고 새로 시작해요` : '타이머 시작! 다 하면 정지를 누르세요', 'Alarm clock');
+    }
+  }
   const doneN = tasks.filter((t) => t.done).length;
 
   function toggle(t) {
@@ -17,7 +37,7 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
     if (r.done) {
       sfx(r.talents > 0 ? 'coin' : 'good');
       vibrate(15);
-      toast(r.talents > 0 ? `달란트 +${r.talents} 획득!` : '잘했어요! 스스로 한 일 완료', r.talents > 0 ? 'Coin' : 'Sparkles');
+      toast((r.talents > 0 ? `달란트 +${r.talents} 획득!` : '잘했어요! 스스로 한 일 완료') + (r.studySec ? ` · 공부 ${M.fmtDur(r.studySec)}` : ''), r.talents > 0 ? 'Coin' : 'Sparkles');
       if (r.allClear) { setTimeout(() => { celebrate(1.6); toast('오늘 할 일 모두 완료! 보너스 +3', 'Trophy', 3500); }, 400); }
     }
   }
@@ -39,8 +59,10 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
           <${Subj} s=${t.subject || '숙제'} />
           ${t.note && html`<span>${t.note}</span>`}
           ${t.source === 'workbook' && html`<span>자동 배정</span>`}
+          ${(() => { const sec = M.timerElapsed(M.timerOf(kid, date, t.id)) || t.studySec || 0; const running = run && run.date === date && run.id === t.id; return sec > 0 && !running ? html`<span class="tm-rec"><${Icon} name="timer" size=${13} />${M.fmtDur(sec)}</span>` : ''; })()}
         </div>
       </div>
+      ${M.isStudyTask(t) && !t.done && isToday && !editable && (() => { const running = run && run.date === date && run.id === t.id; const sec = M.timerElapsed(M.timerOf(kid, date, t.id)); return html`<button class=${'tmr' + (running ? ' on' : '')} aria-label=${running ? '타이머 정지' : '타이머 시작'} onClick=${() => timerTap(t)}>${running ? html`<i class="dot"></i><b class="num">${M.fmtDur(sec, true)}</b><span>정지</span>` : html`<${Icon} name="timer" size=${17} /><span>${sec > 0 ? '이어서' : '시작'}</span>`}</button>`; })()}
       ${Number(t.talents) > 0 && html`<${Reward} n=${t.talents} />`}
       ${editable && !t.done && html`<button class="icon-btn sm" title="내일로 미루기" onClick=${() => { M.postponeTask(kid.id, date, t); toast('내일로 옮겼어요', 'Spiral calendar'); }}><${Icon} name="arrow-right" size=${16} /></button>`}
       ${editable && html`<button class="icon-btn sm" title="삭제" onClick=${() => M.deleteTask(kid.id, date, t)}><${Icon} name="trash-2" size=${16} /></button>`}
