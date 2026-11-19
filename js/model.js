@@ -478,3 +478,8 @@ export function fmtDur(sec, live = false) {
   if (m) return `${m}분`;
   return sec ? `${s}초` : '0분';
 }
+
+// 공부 기록 초기화 (기록된 시간 지우기)
+export function resetTimer(kidId, date, taskId) {
+  db.multi({ [`kids/${kidId}/timers/${date}/${taskId}`]: null, [`kids/${kidId}/tasks/${date}/${taskId}/studySec`]: null });
+}
