@@ -19,6 +19,7 @@ const SECTIONS = [
   { id: 'overview', label: '대시보드', short: '대시', icon: 'layout-dashboard' },
   { id: 'talk', label: '가족톡', short: '톡', icon: 'message-circle' },
   { id: 'homework', label: '숙제 관리', short: '숙제', icon: 'list-checks' },
+  { id: 'report', label: '공부 리포트', short: '리포트', icon: 'chart-column' },
   { id: 'talents', label: '달란트', short: '달란트', icon: 'coins' },
   { id: 'schedule', label: '시간표', short: '시간표', icon: 'calendar-days' },
   { id: 'vocab', label: '영단어', short: '단어', icon: 'languages' },
@@ -64,6 +65,7 @@ export function ParentApp({ sec = 'overview', setSec, onExit }) {
         ${sec === 'overview' && html`<${Overview} kids=${kids} go=${(s, id) => { setKidId(id); setSec(s); }} />`}
         ${sec === 'talk' && (me ? html`<${TalkView} me=${me} />` : html`<${WhoAmIParent} onPick=${pickMe} />`)}
         ${sec === 'homework' && kid && html`<${HomeworkAdmin} kid=${kid} />`}
+        ${sec === 'report' && kid && html`<${ReportAdmin} kid=${kid} />`}
         ${sec === 'talents' && kid && html`<${TalentAdmin} kid=${kid} />`}
         ${sec === 'schedule' && kid && html`<${ScheduleAdmin} kid=${kid} />`}
         ${sec === 'vocab' && kid && html`<${VocabAdmin} kid=${kid} />`}
@@ -441,6 +443,8 @@ function SettingsAdmin({ kids }) {
         <hr class="sep" />
         <${PushSettings} />
         <hr class="sep" />
+        <${StudyPushSettings} />
+        <hr class="sep" />
         <${TalkPushSettings} />
         <hr class="sep" />
         <div class="field"><label>날씨 지역</label><select class="select" value=${s.cityId} onChange=${(e) => db.set('settings/cityId', e.target.value)}>${KOREAN_CITIES.map((c) => html`<option value=${c.id}>${c.name}</option>`)}</select></div>
@@ -496,6 +500,76 @@ function PushSettings() {
       <label class="row small" style="height:46px"><input type="checkbox" checked=${enabled} onChange=${(e) => db.set('settings/push/enabled', e.target.checked)} />알림 켜기</label>
     </div>
     <div class="tip small"><${Icon} name="bell" size=${16} /><div>알림을 켠 모든 기기로 매일 <b>${time}</b>에 내일 날씨·준비물·학원 일정을 보내요. (서버가 15분마다 확인해서 조금 늦을 수 있어요)</div></div>
+  </div>`;
+}
+
+// ---------- 저녁 숙제 알림 · 주간 리포트 알림 ----------
+const HW_TIMES = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00', '22:30'];
+function StudyPushSettings() {
+  const push = M.settings().push || {};
+  const hw = push.homework || {}, wk = push.weekly || {};
+  const hwOn = hw.enabled !== false, wkOn = wk.enabled !== false;
+  const hwTime = hw.time || '20:00', wkTime = wk.time || '20:30';
+  return html`<div class="stack" style="gap:8px">
+    <div class="label">숙제 알림 · 주간 리포트</div>
+    <div class="form-grid">
+      <div class="field"><label>남은 숙제 알림 (매일)</label><select class="select" value=${hwTime} onChange=${(e) => db.set('settings/push/homework/time', e.target.value)}>${HW_TIMES.map((t) => html`<option value=${t}>${t}</option>`)}</select></div>
+      <label class="row small" style="height:46px"><input type="checkbox" checked=${hwOn} onChange=${(e) => db.set('settings/push/homework/enabled', e.target.checked)} />켜기</label>
+      <div class="field"><label>주간 공부 리포트 (일요일)</label><select class="select" value=${wkTime} onChange=${(e) => db.set('settings/push/weekly/time', e.target.value)}>${HW_TIMES.map((t) => html`<option value=${t}>${t}</option>`)}</select></div>
+      <label class="row small" style="height:46px"><input type="checkbox" checked=${wkOn} onChange=${(e) => db.set('settings/push/weekly/enabled', e.target.checked)} />켜기</label>
+    </div>
+    <div class="tip small"><${Icon} name="bell" size=${16} /><div>${hwOn ? html`매일 <b>${hwTime}</b>에 숙제가 남은 아이 기기로 남은 목록을, 부모님 기기로 아이별 현황을 보내요.` : '남은 숙제 알림은 꺼져 있어요.'} ${wkOn ? html`일요일 <b>${wkTime}</b>에는 한 주 공부 시간·완료율 리포트를 보내요.` : ''}</div></div>
+  </div>`;
+}
+
+// ---------- 공부 리포트 (주간) ----------
+function ReportAdmin({ kid }) {
+  const [off, setOff] = useState(0);
+  const today = todayKey(0);
+  const monday = addDays(M.weekStartOf(today), off * 7);
+  const r = M.studyReport(kid, monday);
+  const color = (KID_COLORS.find((c) => c.id === kid.profile.colorId) || KID_COLORS[0]).color;
+  const maxSec = Math.max(1, ...r.days.map((d) => d.sec));
+  const maxSubj = Math.max(1, ...r.bySubject.map((s) => s.sec));
+  const mins = (s) => (s >= 3600 ? (s / 3600).toFixed(1) + '시간' : s >= 60 ? Math.round(s / 60) + '분' : s + '초');
+  const label = off === 0 ? '이번 주' : off === -1 ? '지난 주' : `${-off}주 전`;
+  const dLabel = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}(${DAY_NAMES[new Date(d + 'T00:00:00').getDay()]})`;
+  return html`<div class="report fade-in">
+    <div class="row" style="gap:8px;margin-bottom:12px">
+      <button class="icon-btn" aria-label="이전 주" onClick=${() => setOff(off - 1)}><${Icon} name="chevron-left" /></button>
+      <div class="bold">${label} · ${shortDate(monday)} ~ ${shortDate(addDays(monday, 6))}</div>
+      <button class="icon-btn" aria-label="다음 주" disabled=${off >= 0} onClick=${() => setOff(Math.min(0, off + 1))}><${Icon} name="chevron-right" /></button>
+    </div>
+    <div class="grid g-4 keep rep-tiles" style="gap:10px">
+      <div class="stat-tile"><${Emo} name="Alarm clock" size=${36} /><div><div class="v">${M.fmtDur(r.totalSec)}</div><div class="l">총 공부 시간</div></div></div>
+      <div class="stat-tile"><${Ring} pct=${r.rate} size=${40} stroke=${6} color=${color}><span class="tiny bold">${r.rate}%</span><//><div><div class="v">${r.done}/${r.total}</div><div class="l">숙제 완료율</div></div></div>
+      <div class="stat-tile"><${Emo} name="Books" size=${36} /><div><div class="v">${M.fmtDur(r.avgSec)}</div><div class="l">공부한 날 평균 (${r.studied}일)</div></div></div>
+      <div class="stat-tile"><${Emo} name="Coin" size=${36} /><div><div class="v">${r.talents}</div><div class="l">받은 달란트</div></div></div>
+    </div>
+    <div class="grid g-2 rep-main" style="margin-top:12px">
+      <section class="card fill">
+        <div class="card-h"><${Emo} name="Calendar" size=${26} /><div class="grow"><h2>요일별 공부 시간</h2><div class="tiny muted">막대: 타이머로 잰 시간 · 아래: 숙제 완료</div></div></div>
+        <div class="chart rep-chart">${r.days.map((d) => html`<div class="col" key=${d.date}>
+          <span class="tiny num" style="color:var(--text-2)">${d.sec ? mins(d.sec) : ''}</span>
+          <div class="stack-bar" style="height:96px"><i style=${`height:${(d.sec / maxSec) * 100}%;background:${color}`}></i></div>
+          ${DAY_NAMES[new Date(d.date + 'T00:00:00').getDay()]}
+          <span class="tiny num" style=${`color:${d.total && d.done === d.total ? 'var(--good)' : 'var(--muted)'}`}>${d.future || d.before ? '-' : `${d.done}/${d.total}`}</span>
+        </div>`)}</div>
+        <hr class="sep" />
+        <div class="small bold" style="margin-bottom:6px">과목별 공부 시간</div>
+        ${r.bySubject.length === 0 ? html`<div class="tiny muted">이번 주에는 아직 타이머 기록이 없어요.</div>`
+          : r.bySubject.map((s) => html`<div class="rep-subj" key=${s.subject}><${Subj} s=${s.subject} /><div class="rep-bar"><i style=${`width:${(s.sec / maxSubj) * 100}%;background:${color}`}></i></div><span class="small bold num">${M.fmtDur(s.sec)}</span></div>`)}
+      </section>
+      <section class="card fill">
+        <div class="card-h"><${Emo} name="Memo" size=${26} /><h2 class="grow">숙제별 기록</h2></div>
+        <div class="card-body">
+          <div class="small bold" style="margin-bottom:4px">시간 많이 쓴 숙제</div>
+          ${r.topTasks.length === 0 ? html`<div class="tiny muted" style="margin-bottom:8px">기록 없음</div>` : r.topTasks.map((t, i) => html`<div class="list-row" key=${i}><span class="tiny muted" style="width:62px">${dLabel(t.date)}</span><span class="grow small">${t.title}</span><span class="small bold num">${M.fmtDur(t.sec)}</span></div>`)}
+          <div class="small bold" style="margin:12px 0 4px">못 한 숙제 ${r.missed.length ? html`<span class="badge bad">${r.missed.length}</span>` : ''}</div>
+          ${r.missed.length === 0 ? html`<div class="tip small" style="background:var(--good-soft)"><${Emo} name="Trophy" size=${20} />지난 날짜의 숙제를 모두 했어요!</div>` : r.missed.map((t, i) => html`<div class="list-row" key=${'m' + i}><span class="tiny muted" style="width:62px">${dLabel(t.date)}</span><span class="grow small">${t.title}</span></div>`)}
+        </div>
+      </section>
+    </div>
   </div>`;
 }
 
