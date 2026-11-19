@@ -6,7 +6,7 @@ import { PetStage } from './ui/pet.js';
 import { Avatar } from './ui/talk.js';
 import * as db from './store.js';
 import * as M from './model.js';
-import { getMe, setMe, isParentId, parentDeviceOk, rememberParentDevice, memberInfo, unreadCount, talkMsgs, PARENTS } from './members.js';
+import { getMe, setMe, isParentId, parentDeviceOk, rememberParentDevice, memberInfo, unreadCount, talkMsgs, PARENTS, syncPush } from './members.js';
 import { createSeed, KID_COLORS } from '../data/presets.js';
 import { E } from './util.js';
 import { APP_VERSION } from './config.js';
@@ -44,6 +44,7 @@ function App() {
     if (!ready || booted) return;
     booted = true;
     const me = getMe();
+    if (me) syncPush(me);
     if (route.name !== 'picker' || !me) return;
     if (isParentId(me) && parentUnlocked()) go('/parent');
     else if (!isParentId(me) && M.getKid(me)) go(`/kid/${me}/home`);
@@ -192,5 +193,11 @@ function JoinScreen({ empty = false }) {
 }
 
 window.KQ = { db, M };
+// 알림을 눌러 앱이 열리면 해당 화면(가족톡)으로 이동
+try {
+  navigator.serviceWorker && navigator.serviceWorker.addEventListener('message', (ev) => {
+    if (ev.data && ev.data.type === 'kq-open' && ev.data.url) { const h = ev.data.url.split('#')[1]; if (h) location.hash = h; }
+  });
+} catch (_) {}
 db.connect();
 render(html`<${App} />`, document.getElementById('app'));
