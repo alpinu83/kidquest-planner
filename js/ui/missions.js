@@ -10,6 +10,7 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
   const [adding, setAdding] = useState('');
   const isToday = date === todayKey(0);
   const run = M.runningTimer(kid);
+  const [resetFor, setResetFor] = useState(null);
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!run) return;
@@ -59,7 +60,7 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
           <${Subj} s=${t.subject || '숙제'} />
           ${t.note && html`<span>${t.note}</span>`}
           ${t.source === 'workbook' && html`<span>자동 배정</span>`}
-          ${(() => { const sec = M.timerElapsed(M.timerOf(kid, date, t.id)) || t.studySec || 0; const running = run && run.date === date && run.id === t.id; return sec > 0 && !running ? html`<span class="tm-rec"><${Icon} name="timer" size=${13} />${M.fmtDur(sec)}</span>` : ''; })()}
+          ${(() => { const sec = M.timerElapsed(M.timerOf(kid, date, t.id)) || t.studySec || 0; const running = run && run.date === date && run.id === t.id; return sec > 0 && !running ? html`<button class="tm-rec" title="눌러서 기록 지우기" onClick=${() => setResetFor({ t, sec })}><${Icon} name="timer" size=${13} />${M.fmtDur(sec)}</button>` : ''; })()}
         </div>
       </div>
       ${M.isStudyTask(t) && !t.done && isToday && !editable && (() => { const running = run && run.date === date && run.id === t.id; const sec = M.timerElapsed(M.timerOf(kid, date, t.id)); return html`<button class=${'tmr' + (running ? ' on' : '')} aria-label=${running ? '타이머 정지' : '타이머 시작'} onClick=${() => timerTap(t)}>${running ? html`<i class="dot"></i><b class="num">${M.fmtDur(sec, true)}</b><span>정지</span>` : html`<${Icon} name="timer" size=${17} /><span>${sec > 0 ? '이어서' : '시작'}</span>`}</button>`; })()}
@@ -72,6 +73,12 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
       <button class="btn" onClick=${addOwn}><${Icon} name="plus" size=${18} />추가</button>
     </div>`}
     ${!compact && tasks.length > 0 && html`<div class="small muted" style="margin-top:10px">${doneN}/${tasks.length} 완료 · 모두 끝내면 보너스 +3 달란트</div>`}
+    ${resetFor && html`<${Modal} title="공부 기록 초기화" icon="Alarm clock" onClose=${() => setResetFor(null)}>
+      <div class="stack" style="gap:14px">
+        <div><b>${resetFor.t.title}</b>의 공부 기록(<b>${M.fmtDur(resetFor.sec)}</b>)을 지우고 0부터 다시 잴까요?</div>
+        <div class="row" style="justify-content:flex-end"><button class="btn" onClick=${() => setResetFor(null)}>취소</button><button class="btn danger" onClick=${() => { M.resetTimer(kid.id, date, resetFor.t.id); setResetFor(null); toast('공부 기록을 초기화했어요', 'Alarm clock'); }}>초기화</button></div>
+      </div>
+    <//>`}
   </div>`;
 }
 
