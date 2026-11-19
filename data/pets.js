@@ -3,13 +3,14 @@
 
 export const STAGES = [
   { stage: 0, name: '알', min: 0, scale: 0.52 },
-  { stage: 1, name: '아기', min: 40, scale: 0.5 },
-  { stage: 2, name: '어린이', min: 120, scale: 0.6 },
-  { stage: 3, name: '청소년', min: 260, scale: 0.68 },
-  { stage: 4, name: '어른', min: 460, scale: 0.76 },
-  { stage: 5, name: '전설', min: 720, scale: 0.8 }
+  { stage: 1, name: '아기', min: 300, scale: 0.5 },
+  { stage: 2, name: '어린이', min: 1100, scale: 0.6 },
+  { stage: 3, name: '청소년', min: 2400, scale: 0.68 },
+  { stage: 4, name: '어른', min: 4300, scale: 0.76 },
+  { stage: 5, name: '전설', min: 6800, scale: 0.8 }
 ];
-export const MAX_PET_XP = 720;
+// 2026-11-19 조정: 하루 달란트(약 25~30개)를 꾸준히 모아 약 3주 키우면 전설 (이전 기준 720)
+export const MAX_PET_XP = 6800;
 
 export function stageForXp(xp) {
   let s = STAGES[0];
