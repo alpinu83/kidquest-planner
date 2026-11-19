@@ -2,7 +2,7 @@
 // - 앱 코드(HTML/JS/CSS): 네트워크 우선 → 업데이트가 바로 반영되고, 오프라인이면 캐시 사용
 // - 이미지·폰트·라이브러리: 캐시 우선 (빠른 로딩)
 // - Firebase 실시간 동기화 요청은 가로채지 않음
-const VERSION = 'kq-2.4.0';
+const VERSION = 'kq-2.4.1';
 const CORE = `${VERSION}-core`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -48,7 +48,7 @@ self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = { title: 'KidQuest', body: e.data ? e.data.text() : '' }; }
   const jobs = [self.registration.showNotification(d.title || 'KidQuest', {
-    body: d.body || '', icon: './icons/icon-192.png', badge: './icons/icon-192.png', tag: d.tag || 'kq', renotify: true, data: { url: d.url || './' }
+    body: d.body || '', icon: './icons/icon-192.png', badge: './icons/badge-96.png', tag: d.tag || 'kq', renotify: true, data: { url: d.url || './' }
   })];
   if (typeof d.badge === 'number' && self.navigator && 'setAppBadge' in self.navigator) {
     jobs.push(d.badge > 0 ? self.navigator.setAppBadge(d.badge) : self.navigator.clearAppBadge());
