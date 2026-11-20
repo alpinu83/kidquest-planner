@@ -3,7 +3,7 @@ import { html, useState, useEffect, useMemo, useRef, Icon, Emo, Bar, Ring, toast
 import * as I from '../ile.js';
 import { speak, sfx, vibrate, shortDate, todayKey, DAY_NAMES, dowOf } from '../util.js';
 
-const TYPE_COLOR = { syn: '#7C3AED', ant: '#E11D48', sce: '#0EA5E9', def: '#F59E0B', fill: '#16A34A' };
+const TYPE_COLOR = { syn: '#7C3AED', ant: '#E11D48', sce: '#0EA5E9', def: '#F59E0B', fill: '#16A34A', use: '#0F766E', sense: '#9333EA', ana: '#B45309' };
 
 export function Bold({ text }) {
   const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g);
@@ -17,6 +17,7 @@ export function ILECard({ kid, lesson, onRun }) {
   const acc = I.typeAccuracy(kid, lesson);
   const mocks = I.mocksOf(kid, lesson);
   const next = todays && !todays.done ? todays : missed[0] || null;
+  const hard = I.isHard(kid, lesson);
   return html`<section class="card" style="border:2px solid var(--accent-soft)">
     <div class="row between wrap">
       <div>
@@ -24,7 +25,7 @@ export function ILECard({ kid, lesson, onRun }) {
         <h2 style="font-size:23px;font-weight:900;letter-spacing:-.03em;margin-top:2px">Lesson ${lesson.lesson} · ${lesson.words.length}단어</h2>
         <div class="muted small">시험일 ${shortDate(lesson.testDate)} · 동의어·반의어·상황·뜻·빈칸 5가지 유형</div>
       </div>
-      <div style="text-align:center"><div class=${'badge ' + (d <= 1 ? 'bad' : 'accent')} style="font-size:20px;height:42px;padding:0 16px">${d > 0 ? `D-${d}` : d === 0 ? 'D-DAY' : '시험 끝'}</div></div>
+      <div class="stack" style="align-items:flex-end;gap:8px"><div class="seg"><button class=${!hard ? 'on' : ''} onClick=${() => I.setLevel(kid.id, lesson.id, 'basic')}>기본 · 학원 수준</button><button class=${hard ? 'on' : ''} onClick=${() => I.setLevel(kid.id, lesson.id, 'hard')}>심화 · 학원보다 어렵게</button></div><div class=${'badge ' + (d <= 1 ? 'bad' : 'accent')} style="font-size:20px;height:42px;padding:0 16px">${d > 0 ? `D-${d}` : d === 0 ? 'D-DAY' : '시험 끝'}</div></div>
     </div>
     <div class="scroll-x" style="margin-top:14px"><div class="row" style="gap:8px;min-width:max-content">
       ${plan.map((p) => {
@@ -38,16 +39,17 @@ export function ILECard({ kid, lesson, onRun }) {
     ${next ? html`<button class="btn primary lg block" style="margin-top:14px" onClick=${() => onRun({ kind: 'day', planDay: next })}><${Icon} name="play" size=${20} />${next.date === todayKey(0) ? '오늘 학습 시작' : `밀린 학습: ${shortDate(next.date)}`} · ${next.title}</button>`
       : html`<div class="tip" style="margin-top:14px;background:var(--good-soft)"><${Emo} name="Hundred points" size=${22} /><div>오늘 계획 완료! 아래 유형별 연습이나 모의고사로 더 다져 보세요.</div></div>`}
     <hr class="sep" />
-    <div class="eyebrow" style="margin-bottom:8px">시험 유형별 연습 · 정답률</div>
+    ${hard && html`<div class="tip small" style="margin-top:12px;background:#FFF7ED"><${Emo} name="Fire" size=${18} /><div><b>심화 모드</b> · 헷갈리는 오답 보기, 올바른 쓰임·뜻 구별·유추 문제, 품사 변형(affluence, defiantly…) 빈칸까지 나와요. 모의고사 40문항.</div></div>`}
+    <div class="eyebrow" style="margin-bottom:8px;margin-top:12px">시험 유형별 연습 · 정답률</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
-      ${I.TYPES.map((t) => html`<button key=${t} class="game-card" style="padding:12px;flex-direction:column;align-items:flex-start;gap:6px" onClick=${() => onRun({ kind: 'drill', type: t })}>
+      ${I.typesFor(hard).map((t) => html`<button key=${t} class="game-card" style="padding:12px;flex-direction:column;align-items:flex-start;gap:6px" onClick=${() => onRun({ kind: 'drill', type: t })}>
         <span class="badge" style=${`background:${TYPE_COLOR[t]}1A;color:${TYPE_COLOR[t]}`}>${I.TYPE_LABEL[t]}</span>
         <span class="bold num" style="font-size:18px">${acc[t].pct == null ? '-' : acc[t].pct + '%'}</span>
         <span class="tiny muted">${acc[t].c + acc[t].w}문제 풀이</span>
       </button>`)}
     </div>
     <div class="row wrap" style="margin-top:12px">
-      <button class="btn" onClick=${() => onRun({ kind: 'mock' })}><${Icon} name="file-text" size=${18} />실전 모의고사 33문항</button>
+      <button class="btn" onClick=${() => onRun({ kind: 'mock' })}><${Icon} name="file-text" size=${18} />${hard ? '심화 모의고사 40문항' : '실전 모의고사 33문항'}</button>
       <button class="btn" onClick=${() => onRun({ kind: 'cards' })}><${Icon} name="book-a" size=${18} />단어 카드</button>
       <button class="btn" onClick=${() => onRun({ kind: 'weak' })}><${Icon} name="target" size=${18} />약한 단어 집중</button>
       ${mocks[0] && html`<span class="badge gold" style="height:30px">최근 모의고사 ${mocks[0].score}/${mocks[0].total}</span>`}
@@ -63,20 +65,24 @@ export function ILECard({ kid, lesson, onRun }) {
 
 // ---------- 실행기 ----------
 export function ILERunner({ kid, lesson, run, onExit, onGame }) {
+  const hard = I.isHard(kid, lesson);
   const session = useMemo(() => {
+    const s = (() => {
     if (run.kind === 'day') return I.buildDaySession(kid, lesson, run.planDay);
-    if (run.kind === 'mock') return { cards: [], ...I.buildMock(lesson), mock: true };
-    if (run.kind === 'drill') return { cards: [], ...I.buildTypeDrill(lesson, run.type, 12) };
+    if (run.kind === 'mock') return { cards: [], ...I.buildMock(lesson, hard), mock: true };
+    if (run.kind === 'drill') return { cards: [], ...I.buildTypeDrill(lesson, run.type, 12, null, hard) };
     if (run.kind === 'weak') {
       const weak = I.weakWords(kid, lesson, 5);
       const qs = [];
-      I.TYPES.forEach((t) => weak.forEach((w) => { const q = I.makeQuestion(lesson, w, t); if (q) qs.push(q); }));
+      I.typesFor(hard).forEach((t) => weak.forEach((w) => { if (I.hasType(w, t, hard)) { const q = I.makeQuestion(lesson, w, t, null, hard); if (q) qs.push(q); } }));
       return { cards: weak, questions: qs };
     }
     return { cards: lesson.words, questions: [], cardsOnly: true };
+    })();
+    return { ...s, hard };
   }, []);
   const [phase, setPhase] = useState(session.cards.length ? 'cards' : 'quiz');
-  const title = run.kind === 'day' ? `Day ${run.planDay.day} · ${run.planDay.title}${run.planDay.date > todayKey(0) ? ' (미리 연습 · 기록은 그날 완료)' : ''}` : run.kind === 'mock' ? '실전 모의고사' : run.kind === 'drill' ? `${I.TYPE_LABEL[run.type]} 연습` : run.kind === 'weak' ? '약한 단어 집중' : '단어 카드';
+  const title = run.kind === 'day' ? `Day ${run.planDay.day} · ${run.planDay.title}${run.planDay.date > todayKey(0) ? ' (미리 연습 · 기록은 그날 완료)' : ''}` : run.kind === 'mock' ? (hard ? '심화 모의고사' : '실전 모의고사') : run.kind === 'drill' ? `${I.TYPE_LABEL[run.type]} 연습` : run.kind === 'weak' ? '약한 단어 집중' : '단어 카드';
 
   return html`<div class="stack fade-in" style="gap:16px;max-width:820px;margin:0 auto">
     <div class="row"><button class="icon-btn" aria-label="나가기" onClick=${onExit}><${Icon} name="x" /></button><h2 class="grow" style="font-size:19px;font-weight:800">${title}</h2></div>
@@ -106,6 +112,7 @@ export function WordCards({ words, onDone, doneLabel, onGame, lesson }) {
         ${s.ant.length > 0 && html`<div class="row wrap" style="margin-top:6px;gap:6px"><span class="tiny bold" style="color:#E11D48">반의어</span>${s.ant.map((x) => html`<span class="chip" style="height:26px;border-color:#FECDD3">${x}</span>`)}</div>`}
       </div>`)}
       ${w.col.length > 0 && html`<div class="small" style="margin-top:10px"><b>자주 쓰는 표현</b> · ${w.col.join(' · ')}</div>`}
+      ${w.h && w.h.family.length > 0 && html`<div class="small" style="margin-top:6px"><b>단어 가족 (심화)</b> · ${w.h.family.join(' · ')}</div>`}
       <div style="margin-top:10px;padding:12px;border-radius:14px;border:1px dashed var(--line-strong)">
         <div class="row"><b class="grow">${w.ex}</b><button class="icon-btn sm" onClick=${() => speak(w.ex)}><${Icon} name="volume-2" size=${15} /></button></div>
         <div class="small muted">${w.exKo}</div>
@@ -137,7 +144,7 @@ function Quiz({ kid, lesson, session, run, onExit }) {
       setWrong((l) => [...l, { ...q, given }]);
       // 실전 모의고사가 아니면 틀린 단어를 다른 문장으로 한 번 더
       if (!isMock && !retried[q.wordId + q.type]) {
-        const r = I.retryQuestion(lesson, q);
+        const r = I.retryQuestion(lesson, q, !!session.hard);
         if (r) { setQueue((l) => [...l, { ...r, retry: true }]); setRetried((m) => ({ ...m, [q.wordId + q.type]: true })); }
       }
     }
