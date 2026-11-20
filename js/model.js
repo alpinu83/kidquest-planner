@@ -173,7 +173,7 @@ export function tasksFor(kid, date, planned = false) {
       if ((h.from && date < h.from) || (h.until && date > h.until)) continue;
       const id = `habit_${h.id}`;
       if (out[id]) continue;
-      const t = { id, title: h.title, subject: h.subject || '생활', note: h.note || '', talents: h.talents ?? REWARDS.habit, source: 'habit', order: h.order ?? 9, done: false, virtual: true };
+      const t = { id, title: h.title, subject: h.subject || '생활', note: h.note || '', talents: h.talents ?? REWARDS.habit, source: 'habit', order: h.order ?? 9, done: false, virtual: true, noTimer: !!h.noTimer };
       // 주 1회 과제: 같은 주(월~일)의 지정 요일 중 하루만 하면 완료
       if (h.weekly && days) {
         const monday = addDays(date, -((dow + 6) % 7));
@@ -431,6 +431,7 @@ export function weekSummary(kid, days = 7) {
 const STUDY_SUBJ = ['수학', '영어', '국어', '과학', '사회', '학습지', '숙제', '영단어'];
 const STUDY_WORDS = /(풀기|풀이|읽기|문제|숙제|공부|학습|쓰기|복습|예습|구몬|빠작|단어|독해|연산|p\.\s?\d)/;
 export function isStudyTask(t) {
+  if (t && t.noTimer) return false;
   return !!t && (t.source === 'workbook' || STUDY_SUBJ.includes(t.subject) || STUDY_WORDS.test(String(t.title || '')));
 }
 export function timerOf(kid, date, taskId) {
