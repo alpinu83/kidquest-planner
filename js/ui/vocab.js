@@ -44,7 +44,7 @@ export function VocabTab({ kid }) {
             <div class="muted" style="margin-top:4px">새 단어 + 복습 단어를 망각곡선에 맞춰 자동으로 골라줘요</div></div>
           <${Emo} name="Books" size=${72} />
         </div>
-        <div class="grid g-3" style="margin-top:16px;gap:10px">
+        <div class="grid g-3 keep" style="margin-top:14px;gap:10px">
           <div class="stat-tile"><${Emo} name="Open book" size=${44} /><div><div class="v">${vs.learned}</div><div class="l">익힌 단어</div></div></div>
           <div class="stat-tile"><${Emo} name="Sports medal" size=${44} /><div><div class="v">${vs.mastered}</div><div class="l">완벽 암기</div></div></div>
           <div class="stat-tile"><${Emo} name="Hourglass done" size=${44} /><div><div class="v">${vs.due}</div><div class="l">오늘 복습</div></div></div>
@@ -52,7 +52,7 @@ export function VocabTab({ kid }) {
         <div style="margin-top:16px">${vs.todayDone ? html`<div class="tip"><${Emo} name="Hundred points" size=${24} /><div><b>오늘 학습 완료!</b> 아래 게임으로 실력을 더 키워 보세요 (게임 1판당 +1, 하루 4개까지)</div></div>`
           : html`<button class="btn primary lg block" onClick=${() => setMode('daily')}><${Icon} name="play" size=${20} />시작하기 · 달란트 +3 (만점 +1)</button>`}</div>
       </section>
-      <section class="card">
+      <section class="card hide-phone">
         <div class="card-h"><${Emo} name="Brain" size=${30} /><div class="grow"><h2>기억 상자</h2><div class="muted small">맞히면 다음 상자로, 틀리면 1일 상자로</div></div></div>
         <div class="box-bars">${vs.boxes.map((n, i) => html`<div key=${i} class="bb"><span class="num" style="color:var(--text);font-size:13px">${n}</span><i style=${`height:${(n / maxBox) * 80 + 4}px;${i === 6 ? 'background:linear-gradient(180deg,#F59E0B,#FDE68A)' : ''}`}></i>${BOX_LABEL[i]}</div>`)}</div>
         <button class="btn block" style="margin-top:14px" onClick=${() => setMode('book')}><${Icon} name="book-a" size=${18} />단어장 보기</button>
