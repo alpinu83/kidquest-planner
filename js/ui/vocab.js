@@ -3,11 +3,20 @@ import { html, useState, useEffect, useRef, useMemo, Icon, Emo, Bar, Modal, toas
 import * as M from '../model.js';
 import { VOCAB_LEVELS } from '../../data/vocab.js';
 import { speak, shuffle, sfx, vibrate, normalizeAnswer } from '../util.js';
+import * as I from '../ile.js';
+import { ILECard, ILERunner } from './ile.js';
+
+let POOL = null; // 게임 단어 범위 (학원 레슨 단어로 바꿀 수 있음)
 
 const BOX_LABEL = ['새 단어', '1일', '2일', '4일', '7일', '14일', '마스터'];
 
 export function VocabTab({ kid }) {
-  const [mode, setMode] = useState(null); // null | 'daily' | 'speed' | 'memory' | 'spell' | 'sentence' | 'book'
+  const [mode, setMode] = useState(null);
+  const lesson = I.activeLesson(kid.id);
+  const [ileRun, setIleRun] = useState(null);
+  const [scope, setScope] = useState(lesson && I.dDay(lesson) >= 0 ? 'ile' : 'level');
+  const startGame = (id) => { POOL = scope === 'ile' && lesson ? I.gamePool(lesson) : null; setMode(id); };
+  if (ileRun && lesson) return html`<${ILERunner} kid=${kid} lesson=${lesson} run=${ileRun} onExit=${() => setIleRun(null)} />`; // null | 'daily' | 'speed' | 'memory' | 'spell' | 'sentence' | 'book'
   const vs = M.vocabStats(kid);
   const level = kid.profile?.vocabLevel || 2;
   const lv = VOCAB_LEVELS.find((l) => l.level === Number(level));
@@ -27,6 +36,7 @@ export function VocabTab({ kid }) {
     { id: 'sentence', name: '문장 퍼즐', desc: '단어를 순서대로 배열', e: 'Puzzle piece' }
   ];
   return html`<div class="grid fade-in">
+    ${lesson && html`<${ILECard} kid=${kid} lesson=${lesson} onRun=${setIleRun} />`}
     <div class="grid g-main">
       <section class="card" style="background:linear-gradient(135deg,var(--accent-soft),#fff)">
         <div class="row between wrap">
@@ -34,7 +44,7 @@ export function VocabTab({ kid }) {
             <div class="muted" style="margin-top:4px">새 단어 + 복습 단어를 망각곡선에 맞춰 자동으로 골라줘요</div></div>
           <${Emo} name="Books" size=${72} />
         </div>
-        <div class="grid g-3 keep" style="margin-top:14px;gap:10px">
+        <div class="grid g-3" style="margin-top:16px;gap:10px">
           <div class="stat-tile"><${Emo} name="Open book" size=${44} /><div><div class="v">${vs.learned}</div><div class="l">익힌 단어</div></div></div>
           <div class="stat-tile"><${Emo} name="Sports medal" size=${44} /><div><div class="v">${vs.mastered}</div><div class="l">완벽 암기</div></div></div>
           <div class="stat-tile"><${Emo} name="Hourglass done" size=${44} /><div><div class="v">${vs.due}</div><div class="l">오늘 복습</div></div></div>
@@ -42,14 +52,15 @@ export function VocabTab({ kid }) {
         <div style="margin-top:16px">${vs.todayDone ? html`<div class="tip"><${Emo} name="Hundred points" size=${24} /><div><b>오늘 학습 완료!</b> 아래 게임으로 실력을 더 키워 보세요 (게임 1판당 +1, 하루 4개까지)</div></div>`
           : html`<button class="btn primary lg block" onClick=${() => setMode('daily')}><${Icon} name="play" size=${20} />시작하기 · 달란트 +3 (만점 +1)</button>`}</div>
       </section>
-      <section class="card hide-phone">
+      <section class="card">
         <div class="card-h"><${Emo} name="Brain" size=${30} /><div class="grow"><h2>기억 상자</h2><div class="muted small">맞히면 다음 상자로, 틀리면 1일 상자로</div></div></div>
         <div class="box-bars">${vs.boxes.map((n, i) => html`<div key=${i} class="bb"><span class="num" style="color:var(--text);font-size:13px">${n}</span><i style=${`height:${(n / maxBox) * 80 + 4}px;${i === 6 ? 'background:linear-gradient(180deg,#F59E0B,#FDE68A)' : ''}`}></i>${BOX_LABEL[i]}</div>`)}</div>
         <button class="btn block" style="margin-top:14px" onClick=${() => setMode('book')}><${Icon} name="book-a" size=${18} />단어장 보기</button>
       </section>
     </div>
+    ${lesson && html`<div class="row wrap"><span class="small bold">게임 단어 범위</span><div class="seg"><button class=${scope === 'ile' ? 'on' : ''} onClick=${() => setScope('ile')}>학원 Lesson ${lesson.lesson}</button><button class=${scope === 'level' ? 'on' : ''} onClick=${() => setScope('level')}>내 레벨 단어</button></div></div>`}
     <div class="grid g-4">
-      ${games.map((g) => html`<button key=${g.id} class="game-card" onClick=${() => setMode(g.id)}><${Emo} name=${g.e} size=${52} /><div><h4>${g.name}</h4><div class="small muted">${g.desc}</div></div></button>`)}
+      ${games.map((g) => html`<button key=${g.id} class="game-card" onClick=${() => startGame(g.id)}><${Emo} name=${g.e} size=${52} /><div><h4>${g.name}</h4><div class="small muted">${g.desc}</div></div></button>`)}
     </div>
   </div>`;
 }
@@ -63,6 +74,7 @@ function GameShell({ title, onExit, right, children }) {
 
 // 오답 보기 만들기
 function distractors(word, field, n = 3) {
+  if (POOL && POOL.some((w) => w.id === word.id)) return shuffle(POOL.filter((w) => w.id !== word.id && w[field] !== word[field])).slice(0, n);
   const pool = M.allWords().filter((w) => w.id !== word.id && w[field] !== word[field]);
   const near = pool.filter((w) => Math.abs(Number(w.level) - Number(word.level)) <= 1);
   return shuffle(near.length >= n ? near : pool).slice(0, n);
@@ -263,6 +275,7 @@ function SentenceQ({ w, onAnswer }) {
 
 // ---------- 게임 ----------
 function practicePool(kid) {
+  if (POOL) return POOL;
   const states = (kid.vocab || {}).words || {};
   const learned = M.allWords().filter((w) => states[w.id]);
   const lvl = M.wordsForLevel(kid.profile?.vocabLevel || 2);
