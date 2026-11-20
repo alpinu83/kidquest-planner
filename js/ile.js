@@ -5,8 +5,16 @@ import * as db from './store.js';
 import * as M from './model.js';
 import { todayKey, shuffle, uid, daysBetween, vals } from './util.js';
 
-export const TYPE_LABEL = { syn: '동의어', ant: '반의어', sce: '상황 판단', def: '뜻 고르기', fill: '빈칸 채우기' };
+export const TYPE_LABEL = { syn: '동의어', ant: '반의어', sce: '상황 판단', def: '뜻 고르기', fill: '빈칸 채우기', use: '올바른 쓰임', sense: '뜻 구별', ana: '유추' };
 export const TYPES = ['syn', 'ant', 'sce', 'def', 'fill'];
+export const HARD_TYPES = ['use', 'sense', 'ana'];
+export const ALL_TYPES = [...TYPES, ...HARD_TYPES];
+export function isHard(kid, lesson) {
+  const lv = ileState(kid, lesson).level || lesson.level || 'basic';
+  return lv === 'hard';
+}
+export function setLevel(kidId, lessonId, level) { db.set(`kids/${kidId}/ile/${lessonId}/level`, level); }
+export const typesFor = (hard) => (hard ? ALL_TYPES : TYPES);
 const arr = (x) => (Array.isArray(x) ? x : x && typeof x === 'object' ? Object.values(x) : []);
 
 export function lessonsFor(kidId) {
@@ -25,7 +33,12 @@ function normalizeLesson(l) {
     ...w,
     senses: arr(w.senses).map((s) => ({ ...s, syn: arr(s.syn), ant: arr(s.ant) })),
     col: arr(w.col),
-    q: { syn: arr(w.q && w.q.syn), ant: arr(w.q && w.q.ant), sce: arr(w.q && w.q.sce).map((x) => ({ ...x, o: arr(x.o) })), def: arr(w.q && w.q.def), fill: arr(w.q && w.q.fill) }
+    q: { syn: arr(w.q && w.q.syn), ant: arr(w.q && w.q.ant), sce: arr(w.q && w.q.sce).map((x) => ({ ...x, o: arr(x.o) })), def: arr(w.q && w.q.def), fill: arr(w.q && w.q.fill) },
+    h: {
+      synH: arr(w.h && w.h.synH).map((x) => ({ ...x, o: arr(x.o) })), antH: arr(w.h && w.h.antH).map((x) => ({ ...x, o: arr(x.o) })),
+      sceH: w.h && w.h.sceH ? [{ ...w.h.sceH, o: arr(w.h.sceH.o) }] : [], use: w.h && w.h.use ? [{ o: arr(w.h.use.o) }] : [],
+      sense: w.h && w.h.sense ? [{ ...w.h.sense, o: arr(w.h.sense.o) }] : [], dd: arr(w.h && w.h.dd), family: arr(w.h && w.h.family), fillH: arr(w.h && w.h.fillH)
+    }
   })).sort((a, b) => a.n - b.n);
   return { ...l, words, plan: arr(l.plan).map((p) => ({ ...p, learn: arr(p.learn), types: arr(p.types) })), distractors: arr(l.distractors) };
 }
@@ -38,7 +51,7 @@ export function ileState(kid, lesson) {
 export function wordMastery(kid, lesson, wordId) {
   const st = (ileState(kid, lesson).stats || {})[wordId] || {};
   let c = 0, w = 0;
-  for (const t of TYPES) { c += (st[t] && st[t].c) || 0; w += (st[t] && st[t].w) || 0; }
+  for (const t of ALL_TYPES) { c += (st[t] && st[t].c) || 0; w += (st[t] && st[t].w) || 0; }
   const n = c + w;
   return { c, w, n, pct: n ? Math.round((c / n) * 100) : null, byType: st };
 }
@@ -52,7 +65,7 @@ export function weakWords(kid, lesson, limit = 5) {
 export function typeAccuracy(kid, lesson) {
   const out = {};
   const stats = ileState(kid, lesson).stats || {};
-  for (const t of TYPES) {
+  for (const t of ALL_TYPES) {
     let c = 0, w = 0;
     for (const s of Object.values(stats)) { c += (s[t] && s[t].c) || 0; w += (s[t] && s[t].w) || 0; }
     out[t] = { c, w, pct: c + w ? Math.round((c / (c + w)) * 100) : null };
@@ -85,35 +98,71 @@ function pool(lesson, exclude) {
   return [...p].filter((x) => !ex.has(x.toLowerCase()) && !x.includes(' '));
 }
 
-export function makeQuestion(lesson, w, type, variant = null) {
-  const list = w.q[type] || [];
+export function hasType(w, type, hard) {
+  if (type === 'use' || type === 'sense') return hard && w.h[type].length > 0;
+  if (type === 'ana') return hard && allSyn(w).length + allAnt(w).length > 0;
+  if (hard && (type === 'syn' || type === 'ant')) return w.h[type + 'H'].length > 0 || w.q[type].length > 0;
+  return (w.q[type] || []).length > 0;
+}
+function listFor(w, type, hard) {
+  if (!hard) return w.q[type] || [];
+  if (type === 'syn' || type === 'ant') return w.h[type + 'H'].length ? w.h[type + 'H'] : w.q[type];
+  if (type === 'sce') return [...w.h.sceH, ...w.q.sce];
+  if (type === 'fill') return [...w.h.fillH, ...w.q.fill];
+  if (type === 'use' || type === 'sense') return w.h[type];
+  return w.q[type] || [];
+}
+export function makeQuestion(lesson, w, type, variant = null, hard = false) {
+  const id = uid('q');
+  if (type === 'ana') return makeAnalogy(lesson, w, id);
+  const list = listFor(w, type, hard);
   if (!list.length) return null;
   const item = variant != null ? list[variant % list.length] : list[Math.floor(Math.random() * list.length)];
-  const id = uid('q');
   if (type === 'syn' || type === 'ant') {
+    const ins = type === 'syn' ? 'Choose the best SYNONYM for the bolded word.' : 'Choose the best ANTONYM for the bolded word.';
+    if (item.o && item.o.length) return { id, type, wordId: w.id, prompt: item.s, instruction: ins, options: shuffle(item.o), answer: item.a, hard: true };
     const trapFrom = type === 'syn' ? allAnt(w) : allSyn(w);
     const trap = shuffle(trapFrom)[0];
     const others = shuffle(pool(lesson, [...allSyn(w), ...allAnt(w), item.a, w.word])).slice(0, trap ? 2 : 3);
-    const options = shuffle([item.a, ...(trap ? [trap] : []), ...others]);
-    return { id, type, wordId: w.id, prompt: item.s, instruction: type === 'syn' ? 'Choose the best SYNONYM for the bolded word.' : 'Choose the best ANTONYM for the bolded word.', options, answer: item.a };
+    return { id, type, wordId: w.id, prompt: item.s, instruction: ins, options: shuffle([item.a, ...(trap ? [trap] : []), ...others]), answer: item.a };
   }
-  if (type === 'sce') {
+  if (type === 'sce' || type === 'sense') {
     return { id, type, wordId: w.id, prompt: item.q, instruction: 'Choose the best answer.', options: shuffle(item.o), answer: item.o[0] };
+  }
+  if (type === 'use') {
+    return { id, type, wordId: w.id, prompt: `Which sentence uses **${w.word}** correctly?`, instruction: 'Choose the sentence in which the word is used correctly.', options: shuffle(item.o), answer: item.o[0] };
   }
   if (type === 'def') {
     const sense = w.senses[item.sense || 0] || w.senses[0];
-    const others = shuffle(lesson.words.filter((x) => x.id !== w.id).flatMap((x) => x.senses.map((s) => s.def))).slice(0, 3);
+    const near = hard && w.h.dd.length >= 3 ? shuffle(w.h.dd).slice(0, 3) : null;
+    const others = near || shuffle(lesson.words.filter((x) => x.id !== w.id).flatMap((x) => x.senses.map((s) => s.def))).slice(0, 3);
     const cap = w.word.charAt(0).toUpperCase() + w.word.slice(1);
     return { id, type, wordId: w.id, prompt: item.s, prompt2: `**${cap}** means ______.`, instruction: 'Choose the best answer to complete each sentence.', options: shuffle([sense.def, ...others]), answer: sense.def };
   }
   if (type === 'fill') {
-    return { id, type, wordId: w.id, prompt: item.s, instruction: 'Fill in the blank with the correct word. Pay attention to spelling and grammar.', answer: item.a };
+    return { id, type, wordId: w.id, prompt: item.s, instruction: hard ? 'Fill in the blank. You may need to change the word form (noun, adverb, tense, plural).' : 'Fill in the blank with the correct word. Pay attention to spelling and grammar.', answer: item.a };
   }
   return null;
 }
 
+// 유추: A : B = C : ?  (동의어/반의어 관계)
+function makeAnalogy(lesson, w, id) {
+  const rels = [];
+  if (allSyn(w).length) rels.push('syn');
+  if (allAnt(w).length) rels.push('ant');
+  if (!rels.length) return null;
+  const rel = shuffle(rels)[0];
+  const others = shuffle(lesson.words.filter((x) => x.id !== w.id && (rel === 'syn' ? allSyn(x).length : allAnt(x).length)));
+  if (!others.length) return null;
+  const x = others[0];
+  const xr = shuffle(rel === 'syn' ? allSyn(x) : allAnt(x))[0];
+  const answer = shuffle(rel === 'syn' ? allSyn(w) : allAnt(w))[0];
+  const trap = shuffle(rel === 'syn' ? allAnt(w) : allSyn(w))[0];
+  const rest = shuffle(pool(lesson, [...allSyn(w), ...allAnt(w), answer, w.word])).slice(0, trap ? 2 : 3);
+  return { id, type: 'ana', wordId: w.id, prompt: `**${x.word}** : ${xr}  =  **${w.word}** : ______`, instruction: 'Choose the word that completes the analogy (same relationship).', options: shuffle([answer, ...(trap ? [trap] : []), ...rest]), answer, rel };
+}
+
 function interleave(qs) {
-  // 같은 단어가 연달아 나오지 않게 섞기
   const out = [];
   let rest = shuffle(qs);
   while (rest.length) {
@@ -125,60 +174,70 @@ function interleave(qs) {
 }
 
 export function buildDaySession(kid, lesson, planDay) {
+  const hard = isHard(kid, lesson);
   const all = lesson.words;
   const learn = planDay.learn.map((id) => wordById(lesson, id)).filter(Boolean);
   const reviewIds = planDay.review === 'all' ? all.map((w) => w.id) : arr(planDay.review);
   const review = reviewIds.map((id) => wordById(lesson, id)).filter(Boolean);
   const qs = [];
+  const add = (w, t, v = null) => { if (hasType(w, t, hard)) { const q = makeQuestion(lesson, w, t, v, hard); if (q) qs.push(q); } };
   if (planDay.mode === 'learn') {
-    learn.forEach((w) => TYPES.forEach((t) => { const q = makeQuestion(lesson, w, t, 0); if (q) qs.push(q); }));
+    const learnTypes = hard ? [...TYPES, 'use', 'sense'] : TYPES;
+    learn.forEach((w) => learnTypes.forEach((t) => add(w, t, 0)));
     review.forEach((w) => {
       const m = wordMastery(kid, lesson, w.id).byType;
-      const weakSA = ['syn', 'ant'].filter((t) => w.q[t].length).sort((a, b) => ((m[b] && m[b].w) || 0) - ((m[a] && m[a].w) || 0))[0];
-      if (weakSA) qs.push(makeQuestion(lesson, w, weakSA, 1));
-      qs.push(makeQuestion(lesson, w, 'fill', 1));
+      const weakSA = ['syn', 'ant'].filter((t) => hasType(w, t, hard)).sort((a, b) => ((m[b] && m[b].w) || 0) - ((m[a] && m[a].w) || 0))[0];
+      if (weakSA) add(w, weakSA, 1);
+      add(w, 'fill', 1);
+      if (hard) add(w, 'ana');
     });
-    return { cards: learn, questions: interleave(qs.filter(Boolean)), bank: false };
+    return { cards: learn, questions: interleave(qs), bank: false };
   }
   if (planDay.mode === 'drill' || planDay.mode === 'final') {
-    const types = planDay.types.length ? planDay.types : TYPES;
-    review.forEach((w) => types.forEach((t) => { const q = makeQuestion(lesson, w, t); if (q) qs.push(q); }));
-    if (planDay.mode === 'final') weakWords(kid, lesson, 5).forEach((w) => ['syn', 'ant'].forEach((t) => { const q = makeQuestion(lesson, w, t); if (q) qs.push(q); }));
-    return { cards: [], questions: interleave(qs.filter(Boolean)), bank: false };
+    let types = planDay.types.length ? planDay.types : TYPES;
+    if (hard) types = planDay.mode === 'drill' ? [...types, 'ana'] : [...types, 'use'];
+    review.forEach((w) => types.forEach((t) => add(w, t)));
+    if (planDay.mode === 'final') weakWords(kid, lesson, 5).forEach((w) => ['syn', 'ant'].forEach((t) => add(w, t)));
+    return { cards: [], questions: interleave(qs), bank: false };
   }
-  if (planDay.mode === 'mock') return { cards: [], ...buildMock(lesson), mock: true };
+  if (planDay.mode === 'mock') return { cards: [], ...buildMock(lesson, hard), mock: true };
   return { cards: learn, questions: [], bank: false };
 }
 
-// 실제 시험과 같은 구성: 동의어 7 · 반의어 5 · 상황 5 · 뜻 6 · 빈칸 10 = 33문항
-export function buildMock(lesson) {
+// 기본: 실제 시험 구성 (동의어7·반의어5·상황5·뜻6·빈칸10 = 33)
+// 심화: 동의어7·반의어5·상황5·뜻5·뜻구별2·쓰임5·유추3·빈칸8 = 40 (근접 오답, 어형 변화)
+export function buildMock(lesson, hard = false) {
   const ws = lesson.words;
-  const pick = (type, n) => shuffle(ws.filter((w) => w.q[type].length)).slice(0, n).map((w) => makeQuestion(lesson, w, type));
-  const fill = pick('fill', 10);
+  const pick = (type, n) => shuffle(ws.filter((w) => hasType(w, type, hard))).slice(0, n).map((w) => makeQuestion(lesson, w, type, null, hard));
+  const plan = hard ? [['syn', 7], ['ant', 5], ['sce', 5], ['def', 5], ['sense', 2], ['use', 5], ['ana', 3]] : [['syn', 7], ['ant', 5], ['sce', 5], ['def', 6]];
+  const fill = pick('fill', hard ? 8 : 10).filter(Boolean);
+  const bankBase = fill.map((q) => wordById(lesson, q.wordId).word);
+  const extra = hard ? shuffle(ws.map((w) => w.word).filter((x) => !bankBase.includes(x))).slice(0, 2) : [];
   return {
-    questions: [...pick('syn', 7), ...pick('ant', 5), ...pick('sce', 5), ...pick('def', 6), ...fill].filter(Boolean),
-    bankWords: shuffle(fill.map((q) => wordById(lesson, q.wordId).word)),
+    questions: [...plan.flatMap(([t, n]) => pick(t, n)), ...fill].filter(Boolean),
+    bankWords: shuffle([...bankBase, ...extra]),
     sections: true
   };
 }
 
-export function buildTypeDrill(lesson, type, count = 12, focus = null) {
-  const ws = (focus || lesson.words).filter((w) => w.q[type].length);
+export function buildTypeDrill(lesson, type, count = 12, focus = null, hard = false) {
+  const ws = (focus || lesson.words).filter((w) => hasType(w, type, hard));
   const qs = [];
-  for (let i = 0; qs.length < count && i < count * 3; i++) {
+  for (let i = 0; ws.length && qs.length < count && i < count * 3; i++) {
     const w = ws[i % ws.length];
-    const q = makeQuestion(lesson, w, type, Math.floor(i / ws.length));
+    const q = makeQuestion(lesson, w, type, type === 'ana' ? null : Math.floor(i / ws.length), hard);
     if (q) qs.push(q);
   }
   const questions = interleave(qs);
   return { questions, bankWords: type === 'fill' ? shuffle([...new Set(questions.map((q) => wordById(lesson, q.wordId).word))]) : null };
 }
 
-export function retryQuestion(lesson, q) {
+export function retryQuestion(lesson, q, hard = false) {
   const w = wordById(lesson, q.wordId);
-  const list = w.q[q.type] || [];
+  if (q.type === 'ana') return makeQuestion(lesson, w, 'ana', null, hard);
+  const list = listFor(w, q.type, hard);
   const curIdx = list.findIndex((x) => (x.s || x.q) === q.prompt);
-  return makeQuestion(lesson, w, q.type, list.length > 1 ? curIdx + 1 : 0);
+  return makeQuestion(lesson, w, q.type, list.length > 1 ? curIdx + 1 : 0, hard);
 }
 
 export function checkFill(q, input) {
@@ -190,6 +249,7 @@ export function fillFeedback(q, input, lesson) {
   const w = wordById(lesson, q.wordId);
   if (!v) return '';
   if (v === q.answer.toLowerCase()) return '';
+  if (w && v === w.word && q.answer.toLowerCase() !== w.word) return '단어는 맞았어요! 문장에 맞게 품사·어형(명사/부사/-ing/-ed/복수형)으로 바꿔야 해요.';
   if (w && v.startsWith(w.word.slice(0, Math.max(4, w.word.length - 2))) || (w && q.answer.startsWith(v))) return '단어는 맞았어요! 어형(시제·-ing·복수형)을 확인해 보세요.';
   if (w && levenshtein(v, q.answer.toLowerCase()) <= 2) return '거의 맞았어요! 철자를 다시 확인해 보세요.';
   return '';
