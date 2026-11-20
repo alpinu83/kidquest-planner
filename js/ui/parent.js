@@ -236,15 +236,15 @@ function WorkbookAdmin({ kid }) {
 
 function HabitAdmin({ kid }) {
   const habits = Object.values(kid.habits || {}).filter(Boolean).sort((a, b) => (a.order ?? 9) - (b.order ?? 9));
-  const blank = { title: '', subject: '생활', talents: 1, days: [], weekly: false };
+  const blank = { title: '', subject: '생활', talents: 1, days: [], weekly: false, noTimer: false };
   const [f, setF] = useState(blank);
   const [editId, setEditId] = useState(null);
   const set = (k, v) => setF({ ...f, [k]: v });
-  const startEdit = (h) => { setEditId(h.id); setF({ title: h.title, subject: h.subject || '생활', talents: h.talents ?? 1, days: (h.days || []).map(Number), weekly: !!h.weekly }); };
+  const startEdit = (h) => { setEditId(h.id); setF({ title: h.title, subject: h.subject || '생활', talents: h.talents ?? 1, days: (h.days || []).map(Number), weekly: !!h.weekly, noTimer: !!h.noTimer }); };
   const dayText = (h) => !h.days || !h.days.length ? '매일' : [1, 2, 3, 4, 5, 6, 0].filter((d) => h.days.map(Number).includes(d)).map((d) => DAY_NAMES[d]).join('·') + (h.weekly ? ' 중 1회' : '');
   function add() {
     if (!f.title.trim()) return toast('할 일 이름을 입력하세요', 'Memo');
-    const data = { title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: f.days.length ? [...f.days].sort() : null, weekly: !!f.weekly && f.days.length > 1 };
+    const data = { title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: f.days.length ? [...f.days].sort() : null, weekly: !!f.weekly && f.days.length > 1, noTimer: !!f.noTimer };
     if (editId) {
       db.update(`kids/${kid.id}/habits/${editId}`, data);
       toast('반복 할 일을 수정했어요', 'Spiral calendar');
@@ -258,7 +258,7 @@ function HabitAdmin({ kid }) {
   }
   return html`<section class="card">
     <div class="card-h"><${Emo} name="Spiral calendar" size=${30} /><div class="grow"><h3>반복 할 일 · 습관</h3><div class="muted small">요일을 정하면 해당 요일마다 할 일에 자동으로 들어가요</div></div></div>
-    ${habits.map((h) => html`<div class="list-row" key=${h.id}><${Subj} s=${h.subject || '생활'} /><div class="grow"><b class="small">${h.title}</b><div class="tiny muted">${dayText(h)} · +${h.talents ?? 1}</div></div>
+    ${habits.map((h) => html`<div class="list-row" key=${h.id}><${Subj} s=${h.subject || '생활'} /><div class="grow"><b class="small">${h.title}</b><div class="tiny muted">${dayText(h)} · +${h.talents ?? 1}${h.noTimer ? ' · 타이머 없음' : ''}</div></div>
       <button class="icon-btn sm" title="수정" onClick=${() => startEdit(h)}><${Icon} name="pencil" size=${15} /></button>
       <button class="btn sm" onClick=${() => db.set(`kids/${kid.id}/habits/${h.id}/active`, !h.active)}>${h.active ? '켜짐' : '꺼짐'}</button>
       <button class="icon-btn sm" onClick=${() => db.remove(`kids/${kid.id}/habits/${h.id}`)}><${Icon} name="trash-2" size=${15} /></button></div>`)}
@@ -270,6 +270,7 @@ function HabitAdmin({ kid }) {
       </div>
       <div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<button key=${d} class=${'day ' + (f.days.includes(d) ? 'on' : '')} onClick=${() => set('days', f.days.includes(d) ? f.days.filter((x) => x !== d) : [...f.days, d])}>${DAY_NAMES[d]}</button>`)}<span class="small muted" style="align-self:center">${f.days.length ? '' : '선택 안 하면 매일'}</span></div>
       ${f.days.length > 1 && html`<label class="row small"><input type="checkbox" checked=${f.weekly} onChange=${(e) => set('weekly', e.target.checked)} />선택한 요일 중 한 번만 하면 완료 (주 1회)</label>`}
+      <label class="row small"><input type="checkbox" checked=${f.noTimer} onChange=${(e) => set('noTimer', e.target.checked)} />공부 타이머 없이 바로 체크 (타이머 기록 필요 없음)</label>
       <div class="row"><button class="btn primary grow" onClick=${add}>${editId ? '수정 저장' : '추가'}</button>${editId && html`<button class="btn" onClick=${() => { setEditId(null); setF(blank); }}>취소</button>`}</div>
     </div>
   </section>`;
