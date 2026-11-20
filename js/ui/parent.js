@@ -310,7 +310,7 @@ function BulkImport({ kid }) {
 // ---------- 달란트 ----------
 function TalentAdmin({ kid }) {
   const [reason, setReason] = useState('');
-  const [amount, setAmount] = useState(2);
+  const [amount, setAmount] = useState('1');
   const [pet, setPet] = useState(false);
   const list = M.ledgerList(kid);
   function grant(n, r) {
@@ -328,9 +328,12 @@ function TalentAdmin({ kid }) {
         <div class="row wrap">${PENALTY_PRESETS.map((p) => html`<button key=${p.label} class="chip" onClick=${() => grant(p.talents, p.label)}>${p.label} <b style="color:var(--bad)">${p.talents}</b></button>`)}</div>
         <hr class="sep" />
         <div class="form-grid">
-          <div class="field" style="grid-column:span 2"><label>직접 입력</label><input class="input" placeholder="사유" value=${reason} onInput=${(e) => setReason(e.target.value)} /></div>
-          <div class="field"><label>달란트 (±)</label><input class="input" type="number" value=${amount} onInput=${(e) => setAmount(e.target.value)} /></div>
-          <button class="btn primary" onClick=${() => { if (!reason.trim() || !Number(amount)) return; grant(Number(amount), reason.trim()); setReason(''); }}>반영</button>
+          <div class="field" style="grid-column:span 2"><label>직접 입력 · 사유</label><input class="input" placeholder="예: 쉬는 시간 어김" value=${reason} onInput=${(e) => setReason(e.target.value)} /></div>
+          <div class="field"><label>달란트 수</label><input class="input" type="number" min="1" inputmode="numeric" value=${amount} onInput=${(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))} /></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn good grow" onClick=${() => { const n = Math.abs(parseInt(amount, 10) || 0); if (!reason.trim()) return toast('사유를 입력하세요', 'Memo'); if (!n) return toast('달란트 수를 입력하세요', 'Memo'); grant(n, reason.trim()); setReason(''); }}><${Icon} name="plus" size=${18} />칭찬 +${Math.abs(parseInt(amount, 10) || 0)}</button>
+          <button class="btn danger grow" onClick=${() => { const n = Math.abs(parseInt(amount, 10) || 0); if (!reason.trim()) return toast('사유를 입력하세요', 'Memo'); if (!n) return toast('달란트 수를 입력하세요', 'Memo'); grant(-n, reason.trim()); setReason(''); }}><${Icon} name="minus" size=${18} />감점 −${Math.abs(parseInt(amount, 10) || 0)}</button>
         </div>
       </section>
     </div>

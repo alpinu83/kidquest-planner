@@ -338,8 +338,33 @@ class WorldEngine {
     // 펫이 공을 쫓아감
     for (const e of this.ents) {
       if (e.held || (e.act && !e.act.free)) continue;
-      if (e.mode === 'fly') { const p = this.clampTo('fly', b.x, b.y - 260); e.tx = p.x; e.ty = p.y; e.state = 'go'; e.speedMul = 1.5; continue; }
-      if (e.mode === 'swim') continue;
+      if (e.mode === 'fly') {
+        // 나는 펫: 공 높이까지 내려와서 헤딩·날개로 슛
+        const by = b.y - b.z - 24;
+        e.tx = b.x - e.dir * 16; e.ty = by - 8; e.state = 'go'; e.speedMul = 2.8;
+        const dd = Math.hypot(e.x - b.x, e.y - by);
+        if (dd < 62 && b.cool <= 0) {
+          b.vx = (e.x < b.x ? 1 : -1) * rand(220, 360); b.vy = rand(-110, 110); b.vz = rand(420, 600); b.cool = 0.4; b.kicks++;
+          e.vy -= 160; e.sqv -= 3; sfx('good');
+          if (Math.random() < 0.6) this.say(e, pick(['헤딩~!', '날개 슛!', '하늘에서 받아라!', '내가 찼다!']), 1.2);
+        }
+        continue;
+      }
+      if (e.mode === 'swim') {
+        // 헤엄치는 펫: 물대포로 공을 쳐 줌
+        e.ballT = (e.ballT == null ? rand(1.2, 2.5) : e.ballT) - dt;
+        if (e.ballT <= 0 && b.z < 80) {
+          e.ballT = rand(2.6, 4.6);
+          if (e.z === 0) this.leap(e);
+          this.spout(e, 8);
+          const ddx = b.x - e.x, ddy = b.y - e.y, n = Math.hypot(ddx, ddy) || 1;
+          b.vx = ddx / n * rand(200, 320); b.vy = ddy / n * rand(70, 150); b.vz = rand(380, 540); b.cool = 0.3; b.kicks++;
+          this.emoji('Bubbles', b.x, b.y - b.z - 30, 3, 80);
+          sfx('good');
+          if (Math.random() < 0.7) this.say(e, pick(['물대포 슛~!', '첨벙 슛!', '받아라~ 물보라!']), 1.2);
+        }
+        continue;
+      }
       e.tx = b.x - e.dir * 10; e.ty = b.y; e.state = 'go'; e.speedMul = 1.7; e.sleep = false;
       const d = Math.hypot(e.x - b.x, (e.y - b.y) * 1.5);
       if (d < 46 * this.depth(e) && b.z < 40 && b.cool <= 0) {
@@ -349,9 +374,9 @@ class WorldEngine {
       }
     }
     b.cool -= dt;
-    if (b.kicks >= 8 || b.life <= 0) {
+    if (b.kicks >= 18 || b.life <= 0) {
       this.ball = null;
-      this.ents.forEach((e, i) => { if (e.mode !== 'fly') { e.state = 'idle'; e.timer = 1.5; } setTimeout(() => this.jump(e, 420), i * 120); });
+      this.ents.forEach((e, i) => { e.state = 'idle'; e.timer = e.mode === 'fly' ? 0.3 : 1.5; e.speedMul = 1; e.ballT = null; setTimeout(() => this.jump(e, 420), i * 120); });
       this.emoji('Trophy', b.x, b.y - 40, 3);
       sfx('levelup');
       this.opts.onBallEnd && this.opts.onBallEnd();
@@ -786,6 +811,29 @@ class WorldEngine {
     const sx = (bb.x0 + bb.x1) / 2, sy = bb.y1;
     this.ball = { x: sx, y: sy, z: 80, vx: rand(-160, 160), vy: rand(-220, -140), vz: 700, spin: 0, cool: 0, kicks: 0, life: 30 };
     sfx('tap');
+    const talker = this.ents.find((e) => !e.held);
+    if (talker) this.say(talker, '같이 차자! 공을 톡 치거나 밀어 봐!', 2.4);
+  }
+  // 나도 공놀이: 공을 탭하면 톡, 밀면(스와이프) 그 방향으로 뻥!
+  hitBall(cx, cy) {
+    const b = this.ball; if (!b) return false;
+    const p = this.toScreen(b.x, b.y - b.z - 24);
+    return Math.hypot(cx - p.x, cy - p.y) < Math.max(40, 24 * this.s * 1.8);
+  }
+  kickBall(cx, cy, sdx = 0, sdy = 0) {
+    const b = this.ball; if (!b) return;
+    const p = this.toScreen(b.x, b.y - b.z - 24);
+    const len = Math.hypot(sdx, sdy);
+    let vx, vy;
+    if (len > 14) { vx = sdx / this.s * 5; vy = sdy / this.s * 3; }
+    else { const ax = p.x - cx, ay = p.y - cy, n = Math.hypot(ax, ay) || 1; vx = (ax / n) * rand(260, 380) + rand(-60, 60); vy = (ay / n) * rand(60, 140); }
+    b.vx = clamp(vx, -680, 680); b.vy = clamp(vy, -320, 320); b.vz = rand(440, 620) + Math.min(260, len * 2);
+    b.cool = 0.15; b.life = Math.max(b.life, 14);
+    this.spawn({ k: 'ring', x: b.x, y: b.y, life: 0.6, size: 26 });
+    this.emoji('Sparkles', b.x, b.y - b.z - 30, 2, 80);
+    sfx('good');
+    const fan = pick(this.ents.filter((e) => !e.held));
+    if (fan && Math.random() < 0.5) this.say(fan, pick(['나이스 슛!', '내 쪽으로 차 줘!', '우와 잘 찬다!', '패스~!']), 1.2);
   }
 }
 
@@ -833,6 +881,11 @@ export function PetWorld({ kid, onBack }) {
   function onDown(ev) {
     const en = eng.current; if (!en || !en.ready) return;
     const p = local(ev);
+    if (en.ball && en.hitBall(p.x, p.y)) {
+      drag.current = { ball: true, sx: p.x, sy: p.y, t: performance.now() };
+      try { canvasRef.current.setPointerCapture(ev.pointerId); } catch (_) {}
+      return;
+    }
     const e = en.hit(p.x, p.y);
     drag.current = { e, sx: p.x, sy: p.y, moved: false, t: performance.now() };
     try { canvasRef.current.setPointerCapture(ev.pointerId); } catch (_) {}
@@ -852,6 +905,7 @@ export function PetWorld({ kid, onBack }) {
     const d = drag.current, en = eng.current; drag.current = null;
     if (!d || !en) return;
     const p = local(ev);
+    if (d.ball) { en.kickBall(d.sx, d.sy, p.x - d.sx, p.y - d.sy); vibrate(15); setHint(false); return; }
     if (d.e) {
       const e = d.e;
       if (!d.moved) {
@@ -880,7 +934,7 @@ export function PetWorld({ kid, onBack }) {
     <div class="pw-ov" ref=${ovRef}></div>
     ${loading && legends.length > 0 && html`<div class="pw-loading">펫들이 놀러 오는 중…</div>`}
     ${legends.length === 0 && html`<div class="pw-empty"><img src=${E('Egg')} alt="" /><b>아직 전설 펫이 없어요</b><span>펫을 전설까지 키우면 여기 펫 월드에서 함께 살아요!</span></div>`}
-    ${hint && legends.length > 0 && !loading && html`<div class="pw-hint">펫을 눌러 보세요 · 빠르게 3번 = 전설 스킬 · 꾹 눌러 들어 올리기 · 빈 곳을 누르면 달려와요</div>`}
+    ${hint && legends.length > 0 && !loading && html`<div class="pw-hint">펫을 눌러 보세요 · 빠르게 3번 = 전설 스킬 · 꾹 눌러 들어 올리기 · 빈 곳을 누르면 달려와요 · 공 놀이 땐 공을 톡 치거나 밀어 보세요</div>`}
     <div class="pw-top">
       <button class="btn sm pw-glass" onClick=${onBack}><${Icon} name="chevron-left" size=${16} />내 펫</button>
       <div class="pw-title pw-glass"><b>${kid.profile.name}의 펫 월드</b><span>전설 ${legends.length}마리</span></div>
