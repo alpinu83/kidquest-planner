@@ -46,6 +46,8 @@ def vals(o):
 
 
 def is_study(t):
+    if t.get("noTimer"):
+        return False
     return t.get("source") == "workbook" or (t.get("subject") or "") in STUDY_SUBJ or bool(STUDY_WORDS.search(str(t.get("title") or "")))
 
 
@@ -91,6 +93,28 @@ def tasks_for(kid, date):
     for tid, h in habits.items():
         if not h.get("active"):
             continue
+        if h.get("dueDow") not in (None, ""):
+            # 마감형: 마감 요일까지 window일 동안 보이고 그 사이 한 번만 하면 완료 (앱 model.tasksFor와 같은 규칙)
+            if (h.get("from") and date < h["from"]) or (h.get("until") and date > h["until"]) or tid in out:
+                if tid in out:
+                    out[tid]["dueDate"] = add(date, (int(h["dueDow"]) - dw + 7) % 7)
+                    out[tid]["due"] = True
+                continue
+            due_dow, win = int(h["dueDow"]), max(1, min(7, int(h.get("window") or 6)))
+            k = (due_dow - dw + 7) % 7
+            if k > win - 1:
+                continue
+            due_date = add(date, k)
+            start = add(due_date, -(win - 1))
+            t = {"id": tid, "title": h.get("title"), "subject": h.get("subject") or "숙제", "source": "habit", "done": False, "due": True, "dueDate": due_date, "noTimer": bool(h.get("noTimer"))}
+            for i in range(win):
+                d2 = add(start, i)
+                if d2 != date and (((kid.get("tasks") or {}).get(d2) or {}).get(tid) or {}).get("done"):
+                    t["done"] = True
+                    t["lockedDone"] = True
+                    break
+            out[tid] = t
+            continue
         days = [int(x) for x in (h.get("days") or [])] or None
         if days and dw not in days:
             continue
@@ -98,7 +122,7 @@ def tasks_for(kid, date):
             continue
         if tid in out:
             continue
-        t = {"id": tid, "title": h.get("title"), "subject": h.get("subject") or "생활", "source": "habit", "done": False, "weekly": bool(h.get("weekly") and days)}
+        t = {"id": tid, "title": h.get("title"), "subject": h.get("subject") or "생활", "source": "habit", "done": False, "weekly": bool(h.get("weekly") and days), "noTimer": bool(h.get("noTimer"))}
         if t["weekly"]:
             monday = add(date, -((dw + 6) % 7))
             for i in range(7):
@@ -181,7 +205,7 @@ if FORCE == "homework" or (not FORCE and due(hw, "20:00", "hwLastSent", today, n
     msgs, parent_lines, all_done = [], [], True
     for k in kids:
         tasks = tasks_for(k, today)
-        left = [t for t in tasks if not t.get("done")]
+        left = [t for t in tasks if not t.get("done") and not (t.get("due") and t.get("dueDate", today) > today)]
         study_left = [t for t in left if is_study(t)]
         other_left = [t for t in left if not is_study(t)]
         sec = studied_on(k, today, now_ms)
@@ -207,7 +231,7 @@ if FORCE == "weekly" or (not FORCE and dow(today) == 0 and due(wk, "20:30", "wee
     msgs, parent_lines = [], []
     for k in kids:
         total = done = secs = 0
-        subj, weekly_seen = {}, {}
+        subj, weekly_seen, books = {}, {}, []
         # 앱을 쓰기 시작한 날 이전은 셈하지 않음 (앱 리포트 화면과 같은 기준)
         first = min([e.get("date") for e in vals(k.get("ledger")) if e.get("date")] +
                     [d for d, ts in (k.get("tasks") or {}).items() if any(t and t.get("done") for t in vals(ts))] or [today])
@@ -225,19 +249,31 @@ if FORCE == "weekly" or (not FORCE and dow(today) == 0 and due(wk, "20:30", "wee
                     key = "기타" if key == "생활" else key
                     subj[key] = subj.get(key, 0) + s
             for t in tasks_for(k, d):
-                if t.get("weekly"):
-                    weekly_seen[t["id"]] = weekly_seen.get(t["id"], False) or (bool(t.get("done")) and not t.get("lockedDone"))
+                if t.get("weekly") or t.get("due"):
+                    key = t["id"] + ("|" + t.get("dueDate", "") if t.get("due") else "")
+                    prev = weekly_seen.get(key, {"done": False, "due": t.get("dueDate") if t.get("due") else None})
+                    prev["done"] = prev["done"] or (bool(t.get("done")) and not t.get("lockedDone"))
+                    weekly_seen[key] = prev
                     continue
                 total += 1
                 done += 1 if t.get("done") else 0
-        total += len(weekly_seen)
-        done += sum(1 for v in weekly_seen.values() if v)
+            for t in vals(((k.get("tasks") or {}).get(d)) or {}):
+                rec = t.get("rec") if isinstance(t, dict) else None
+                if t.get("done") and rec and rec.get("book"):
+                    books.append(rec)
+        counted = [v for v in weekly_seen.values() if v["done"] or not (v["due"] and v["due"] > today)]
+        total += len(counted)
+        done += sum(1 for v in counted if v["done"])
         rate = round(done * 100 / total) if total else 0
         top = sorted(subj.items(), key=lambda x: -x[1])[:3]
         subj_txt = ", ".join(f"{s} {fmt(v)}" for s, v in top)
-        parent_lines.append(f"{name(k)}: 공부 {fmt(secs)} · 숙제 {rate}% ({done}/{total})" + (f" · {subj_txt}" if subj_txt else ""))
+        def book_txt(b):
+            t = int(b.get("total") or 0)
+            return f"「{b.get('book')}」" + (f" {int(b.get('correct') or 0)}/{t}({round(int(b.get('correct') or 0) * 100 / t)}점)" if t else "")
+        books_txt = ", ".join(book_txt(b) for b in books)
+        parent_lines.append(f"{name(k)}: 공부 {fmt(secs)} · 숙제 {rate}% ({done}/{total})" + (f" · {subj_txt}" if subj_txt else "") + (f"\n  영어책 {books_txt}" if books_txt else ""))
         cheer = "정말 잘했어요!" if rate >= 90 else "다음 주도 화이팅!"
-        msgs.append({"members": [k["id"]], "title": "이번 주 공부 리포트", "body": f"공부 {fmt(secs)} · 숙제 {rate}% 완료 ({done}/{total})\n{cheer}", "url": f"#/kid/{k['id']}", "tag": "kq-week"})
+        msgs.append({"members": [k["id"]], "title": "이번 주 공부 리포트", "body": f"공부 {fmt(secs)} · 숙제 {rate}% 완료 ({done}/{total})" + (f"\n영어책 {books_txt}" if books_txt else "") + f"\n{cheer}", "url": f"#/kid/{k['id']}", "tag": "kq-week"})
     m1, m2 = s2d(monday), s2d(add(monday, 6))
     msgs.append({"members": PARENTS, "title": f"주간 공부 리포트 ({m1.month}/{m1.day}~{m2.month}/{m2.day})", "body": "\n".join(parent_lines), "url": "#/parent/report", "tag": "kq-week"})
     send(msgs)
