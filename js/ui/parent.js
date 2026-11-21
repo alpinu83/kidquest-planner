@@ -237,15 +237,15 @@ function WorkbookAdmin({ kid }) {
 
 function HabitAdmin({ kid }) {
   const habits = Object.values(kid.habits || {}).filter(Boolean).sort((a, b) => (a.order ?? 9) - (b.order ?? 9));
-  const blank = { title: '', subject: '생활', talents: 1, days: [], weekly: false, noTimer: false };
+  const blank = { title: '', subject: '생활', talents: 1, days: [], weekly: false, noTimer: false, dueDow: '', window: 6 };
   const [f, setF] = useState(blank);
   const [editId, setEditId] = useState(null);
   const set = (k, v) => setF({ ...f, [k]: v });
-  const startEdit = (h) => { setEditId(h.id); setF({ title: h.title, subject: h.subject || '생활', talents: h.talents ?? 1, days: (h.days || []).map(Number), weekly: !!h.weekly, noTimer: !!h.noTimer }); };
-  const dayText = (h) => !h.days || !h.days.length ? '매일' : [1, 2, 3, 4, 5, 6, 0].filter((d) => h.days.map(Number).includes(d)).map((d) => DAY_NAMES[d]).join('·') + (h.weekly ? ' 중 1회' : '');
+  const startEdit = (h) => { setEditId(h.id); setF({ title: h.title, subject: h.subject || '생활', talents: h.talents ?? 1, days: (h.days || []).map(Number), weekly: !!h.weekly, noTimer: !!h.noTimer, dueDow: h.dueDow ?? '', window: h.window || 6 }); };
+  const dayText = (h) => h.dueDow !== undefined && h.dueDow !== null && h.dueDow !== '' ? `${DAY_NAMES[Number(h.dueDow)]}요일까지 (${h.window || 6}일 중 1회)` : !h.days || !h.days.length ? '매일' : [1, 2, 3, 4, 5, 6, 0].filter((d) => h.days.map(Number).includes(d)).map((d) => DAY_NAMES[d]).join('·') + (h.weekly ? ' 중 1회' : '');
   function add() {
     if (!f.title.trim()) return toast('할 일 이름을 입력하세요', 'Memo');
-    const data = { title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: f.days.length ? [...f.days].sort() : null, weekly: !!f.weekly && f.days.length > 1, noTimer: !!f.noTimer };
+    const data = { title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: f.days.length ? [...f.days].sort() : null, weekly: !!f.weekly && f.days.length > 1, noTimer: !!f.noTimer, dueDow: f.dueDow === '' ? null : Number(f.dueDow), window: f.dueDow === '' ? null : Math.min(7, Math.max(1, Number(f.window) || 6)) };
     if (editId) {
       db.update(`kids/${kid.id}/habits/${editId}`, data);
       toast('반복 할 일을 수정했어요', 'Spiral calendar');
@@ -269,8 +269,9 @@ function HabitAdmin({ kid }) {
         <div class="field"><label>과목</label><select class="select" value=${f.subject} onChange=${(e) => set('subject', e.target.value)}>${['생활', '수학', '영어', '국어', '학습지', '과학', '숙제'].map((s) => html`<option>${s}</option>`)}</select></div>
         <div class="field"><label>달란트</label><input class="input" type="number" min="0" max="10" value=${f.talents} onInput=${(e) => set('talents', e.target.value)} /></div>
       </div>
-      <div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<button key=${d} class=${'day ' + (f.days.includes(d) ? 'on' : '')} onClick=${() => set('days', f.days.includes(d) ? f.days.filter((x) => x !== d) : [...f.days, d])}>${DAY_NAMES[d]}</button>`)}<span class="small muted" style="align-self:center">${f.days.length ? '' : '선택 안 하면 매일'}</span></div>
-      ${f.days.length > 1 && html`<label class="row small"><input type="checkbox" checked=${f.weekly} onChange=${(e) => set('weekly', e.target.checked)} />선택한 요일 중 한 번만 하면 완료 (주 1회)</label>`}
+      <div class="row wrap small" style="gap:8px"><span class="bold">마감일 방식</span><select class="select" style="width:auto;height:36px" value=${f.dueDow} onChange=${(e) => set('dueDow', e.target.value)}><option value="">사용 안 함 (요일마다 반복)</option>${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<option value=${d}>${DAY_NAMES[d]}요일까지 완료</option>`)}</select>${f.dueDow !== '' && html`<span>마감 전</span><input class="input" type="number" min="1" max="7" style="width:64px;height:36px" value=${f.window} onInput=${(e) => set('window', e.target.value)} /><span>일 동안 보이고 한 번 하면 완료</span>`}</div>
+      ${f.dueDow === '' && html`<div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<button key=${d} class=${'day ' + (f.days.includes(d) ? 'on' : '')} onClick=${() => set('days', f.days.includes(d) ? f.days.filter((x) => x !== d) : [...f.days, d])}>${DAY_NAMES[d]}</button>`)}<span class="small muted" style="align-self:center">${f.days.length ? '' : '선택 안 하면 매일'}</span></div>`}
+      ${f.dueDow === '' && f.days.length > 1 && html`<label class="row small"><input type="checkbox" checked=${f.weekly} onChange=${(e) => set('weekly', e.target.checked)} />선택한 요일 중 한 번만 하면 완료 (주 1회)</label>`}
       <label class="row small"><input type="checkbox" checked=${f.noTimer} onChange=${(e) => set('noTimer', e.target.checked)} />공부 타이머 없이 바로 체크 (타이머 기록 필요 없음)</label>
       <div class="row"><button class="btn primary grow" onClick=${add}>${editId ? '수정 저장' : '추가'}</button>${editId && html`<button class="btn" onClick=${() => { setEditId(null); setF(blank); }}>취소</button>`}</div>
     </div>
