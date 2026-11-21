@@ -193,7 +193,7 @@ export function tasksFor(kid, date, planned = false) {
       if ((h.from && date < h.from) || (h.until && date > h.until)) continue;
       const id = `habit_${h.id}`;
       if (out[id]) continue;
-      const t = { id, title: h.title, subject: h.subject || '생활', note: h.note || '', talents: h.talents ?? REWARDS.habit, source: 'habit', order: h.order ?? 9, done: false, virtual: true, noTimer: !!h.noTimer };
+      const t = { id, title: h.title, subject: h.subject || '생활', note: h.note || '', talents: h.talents ?? REWARDS.habit, source: 'habit', order: h.order ?? 9, done: false, virtual: true, noTimer: !!h.noTimer, record: h.record || null };
       // 주 1회 과제: 같은 주(월~일)의 지정 요일 중 하루만 하면 완료
       if (h.weekly && days) {
         const monday = addDays(date, -((dow + 6) % 7));
@@ -212,7 +212,8 @@ export function tasksFor(kid, date, planned = false) {
     .sort((a, b) => (a.done - b.done) || ((a.order ?? 5) - (b.order ?? 5)) || String(a.title).localeCompare(String(b.title)));
 }
 
-export function toggleTask(kidId, date, task) {
+export function toggleTask(kidId, date, task, extra = null) {
+  if (task.record && !task.done && !(extra && extra.rec)) return { done: false, needRecord: true };
   if (task.lockedDone) return { done: true, blocked: true, msg: task.dueDate ? '이번 마감 기간에 이미 완료했어요!' : '이번 주에 이미 완료했어요!' };
   const kid = getKid(kidId);
   const path = `kids/${kidId}/tasks/${date}/${task.id}`;
@@ -223,8 +224,8 @@ export function toggleTask(kidId, date, task) {
     const tm = timerOf(kid, date, task.id);
     const updates = {
       ...(tm && tm.startedAt ? stopUpdates(kidId, date, task.id, tm) : {}),
-      [path]: { ...rest, done: true, doneAt: Date.now(), ...(tm ? { studySec: timerElapsed(tm) } : {}) },
-      ...earn(kid, date, ledgerId, reward, `${task.subject ? '[' + task.subject + '] ' : ''}${task.title}`)
+      [path]: { ...rest, done: true, doneAt: Date.now(), ...(tm ? { studySec: timerElapsed(tm) } : {}), ...(extra || {}) },
+      ...earn(kid, date, ledgerId, reward, `${task.subject ? '[' + task.subject + '] ' : ''}${task.title}${extra && extra.rec && extra.rec.book ? ` · 「${extra.rec.book}」${extra.rec.total ? ` ${extra.rec.correct}/${extra.rec.total}` : ''}` : ''}`)
     };
     db.multi(updates);
     // 오늘 모두 완료 보너스
@@ -249,6 +250,10 @@ export function toggleTask(kidId, date, task) {
   if ((kid.ledger || {})[acId] && talentBalance(kid) - (entry?.talents || 0) >= REWARDS.allClear) updates[`kids/${kidId}/ledger/${acId}`] = null;
   db.multi(updates);
   return { done: false };
+}
+
+export function saveRecord(kidId, date, taskId, rec) {
+  db.set(`kids/${kidId}/tasks/${date}/${taskId}/rec`, rec);
 }
 
 export function addTask(kidId, date, { title, subject = '숙제', talents = REWARDS.homework, note = '' }) {
@@ -531,8 +536,10 @@ export function studyReport(kid, monday) {
     if (counted) {
       for (const t of tasksFor(kid, d, true)) {
         const h = t.source === 'habit' ? vals(kid.habits).find((x) => 'habit_' + x.id === t.id) : null;
-        if (h && h.weekly) { // 주 1회 과제는 한 주에 한 번만 셈
-          const w = weeklySeen[t.id] || (weeklySeen[t.id] = { title: t.title, done: false, last: d });
+        const isDue = h && h.dueDow !== undefined && h.dueDow !== null && h.dueDow !== '';
+        if (h && (h.weekly || isDue)) { // 주 1회·마감형 과제는 한 기간에 한 번만 셈
+          const key = isDue ? t.id + '|' + t.dueDate : t.id;
+          const w = weeklySeen[key] || (weeklySeen[key] = { title: t.title, done: false, last: d, due: isDue ? t.dueDate : null });
           if (t.done && !t.lockedDone) w.done = true;
           w.last = d;
           continue;
@@ -553,8 +560,14 @@ export function studyReport(kid, monday) {
     days.push({ date: d, sec, total: dTotal, done: dDone, future: d > today, before: d < first });
   }
   for (const [id, w] of Object.entries(weeklySeen)) {
+    if (w.due && w.due > today && !w.done) continue; // 아직 마감 전
     total++; if (w.done) done++;
-    else if (addDays(monday, 6) < today) missed.push({ date: w.last, title: w.title + ' (주 1회)' });
+    else if ((w.due ? w.due : addDays(monday, 6)) < today) missed.push({ date: w.last, title: w.title + (w.due ? ' (마감 지남)' : ' (주 1회)') });
+  }
+  const books = [];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(monday, i);
+    for (const t of Object.values(((kid.tasks || {})[d]) || {})) if (t && t.done && t.rec && t.rec.book) books.push({ date: d, title: t.title, ...t.rec });
   }
   const studied = days.filter((d) => d.sec > 0).length;
   const talents = sum(days, (d) => talentsEarnedOn(kid, d.date));
@@ -563,6 +576,7 @@ export function studyReport(kid, monday) {
     avgSec: studied ? Math.round(totalSec / studied) : 0, studied, talents,
     bySubject: Object.entries(subj).map(([subject, sec]) => ({ subject, sec })).sort((a, b) => b.sec - a.sec),
     topTasks: taskSec.sort((a, b) => b.sec - a.sec).slice(0, 8),
-    missed
+    missed,
+    books
   };
 }
