@@ -5,6 +5,8 @@ import { VOCAB_LEVELS } from '../../data/vocab.js';
 import { speak, shuffle, sfx, vibrate, normalizeAnswer } from '../util.js';
 import * as I from '../ile.js';
 import { ILECard, ILERunner } from './ile.js';
+import * as SC from '../science.js';
+import { SciCard, SciRunner } from './science.js';
 
 let POOL = null; // 게임 단어 범위 (학원 레슨 단어로 바꿀 수 있음)
 
@@ -14,8 +16,11 @@ export function VocabTab({ kid }) {
   const [mode, setMode] = useState(null);
   const lesson = I.activeLesson(kid.id);
   const [ileRun, setIleRun] = useState(null);
+  const sci = SC.activeTest(kid.id);
+  const [sciRun, setSciRun] = useState(null);
   const [scope, setScope] = useState(lesson && I.dDay(lesson) >= 0 ? 'ile' : 'level');
   const startGame = (id) => { POOL = scope === 'ile' && lesson ? I.gamePool(lesson) : null; setMode(id); };
+  if (sciRun && sci) return html`<${SciRunner} kid=${kid} test=${sci} run=${sciRun} onExit=${() => setSciRun(null)} />`;
   if (ileRun && lesson) return html`<${ILERunner} kid=${kid} lesson=${lesson} run=${ileRun} onExit=${() => setIleRun(null)} />`; // null | 'daily' | 'speed' | 'memory' | 'spell' | 'sentence' | 'book'
   const vs = M.vocabStats(kid);
   const level = kid.profile?.vocabLevel || 2;
@@ -37,6 +42,7 @@ export function VocabTab({ kid }) {
   ];
   return html`<div class="grid fade-in">
     ${lesson && html`<${ILECard} kid=${kid} lesson=${lesson} onRun=${setIleRun} />`}
+    ${sci && html`<${SciCard} kid=${kid} test=${sci} onRun=${setSciRun} />`}
     <div class="grid g-main">
       <section class="card" style="background:linear-gradient(135deg,var(--accent-soft),#fff)">
         <div class="row between wrap">
