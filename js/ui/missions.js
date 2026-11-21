@@ -11,6 +11,7 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
   const isToday = date === todayKey(0);
   const run = M.runningTimer(kid);
   const [resetFor, setResetFor] = useState(null);
+  const [recFor, setRecFor] = useState(null);
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!run) return;
@@ -38,7 +39,10 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
       sfx('bad'); vibrate(30);
       return toast('공부 타이머를 켜고 공부한 다음 체크할 수 있어요', 'Alarm clock', 3000);
     }
-    const r = M.toggleTask(kid.id, date, t);
+    if (!t.done && t.record) { setRecFor({ t, mode: 'new' }); return; }
+    afterToggle(M.toggleTask(kid.id, date, t));
+  }
+  function afterToggle(r) {
     if (r.blocked) return toast(r.msg, 'Thinking face');
     if (r.done) {
       sfx(r.talents > 0 ? 'coin' : 'good');
@@ -65,6 +69,8 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
           <${Subj} s=${t.subject || '숙제'} />
           ${t.note && html`<span>${t.note}</span>`}
           ${t.source === 'workbook' && html`<span>자동 배정</span>`}
+          ${t.rec && t.rec.book && html`<button class="tm-rec" style="background:#EEF2FF;color:#3730A3" title="눌러서 기록 고치기" onClick=${() => setRecFor({ t, mode: 'edit' })}>📖 ${t.rec.book}${t.rec.total ? ` · ${t.rec.correct}/${t.rec.total} (${Math.round((t.rec.correct / t.rec.total) * 100)}%)` : ''}</button>`}
+          ${!t.done && t.record === 'book' && html`<span>✏️ 책 제목·점수 기록 후 완료</span>`}
           ${(() => { const sec = M.timerElapsed(M.timerOf(kid, date, t.id)) || t.studySec || 0; const running = run && run.date === date && run.id === t.id; return sec > 0 && !running ? html`<button class="tm-rec" title="눌러서 기록 지우기" onClick=${() => setResetFor({ t, sec })}><${Icon} name="timer" size=${13} />${M.fmtDur(sec)}</button>` : ''; })()}
         </div>
       </div>
@@ -78,6 +84,7 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
       <button class="btn" onClick=${addOwn}><${Icon} name="plus" size=${18} />추가</button>
     </div>`}
     ${!compact && tasks.length > 0 && html`<div class="small muted" style="margin-top:10px">${doneN}/${tasks.length} 완료 · 모두 끝내면 보너스 +3 달란트</div>`}
+    ${recFor && html`<${BookRecordModal} task=${recFor.t} mode=${recFor.mode} onClose=${() => setRecFor(null)} onSave=${(rec) => { if (recFor.mode === 'edit') { M.saveRecord(kid.id, date, recFor.t.id, rec); toast('기록을 고쳤어요', 'Memo'); } else { afterToggle(M.toggleTask(kid.id, date, recFor.t, { rec })); } setRecFor(null); }} />`}
     ${resetFor && html`<${Modal} title="공부 기록 초기화" icon="Alarm clock" onClose=${() => setResetFor(null)}>
       <div class="stack" style="gap:14px">
         <div><b>${resetFor.t.title}</b>의 공부 기록(<b>${M.fmtDur(resetFor.sec)}</b>)을 지우고 0부터 다시 잴까요?</div>
@@ -338,4 +345,29 @@ function CheckBox({ onSave, busy }) {
     <input class="input" placeholder="한 줄 소감 (선택)" value=${memo} onInput=${(e) => setMemo(e.target.value)} />
     <button class="btn primary lg" disabled=${busy} onClick=${() => onSave(memo.trim())}><${Icon} name="check" size=${20} />했어요!</button>
   </div>`;
+}
+
+
+// 영어책 등 기록형 할 일: 완료 전에 책 제목·점수 기록
+function BookRecordModal({ task, mode, onClose, onSave }) {
+  const r0 = (task && task.rec) || {};
+  const [book, setBook] = useState(r0.book || '');
+  const [correct, setCorrect] = useState(r0.correct != null ? String(r0.correct) : '');
+  const [total, setTotal] = useState(r0.total != null ? String(r0.total) : '');
+  const c = parseInt(correct, 10), n = parseInt(total, 10);
+  const valid = book.trim().length > 0 && Number.isFinite(c) && Number.isFinite(n) && n > 0 && c >= 0 && c <= n;
+  const pct = valid ? Math.round((c / n) * 100) : null;
+  return html`<${Modal} title=${mode === 'edit' ? '영어책 기록 고치기' : '영어책 다 읽었어요!'} icon="Open book" onClose=${onClose}>
+    <div class="stack">
+      <div class="field"><label>읽은 책 제목</label><input class="input" placeholder="예: Magic Tree House #3" value=${book} onInput=${(e) => setBook(e.target.value)} /></div>
+      <div class="row" style="gap:10px;align-items:flex-end">
+        <div class="field grow"><label>맞은 문제 수</label><input class="input" type="number" inputmode="numeric" min="0" value=${correct} onInput=${(e) => setCorrect(e.target.value.replace(/[^0-9]/g, ''))} /></div>
+        <span class="bold" style="padding-bottom:12px">/</span>
+        <div class="field grow"><label>전체 문제 수</label><input class="input" type="number" inputmode="numeric" min="1" value=${total} onInput=${(e) => setTotal(e.target.value.replace(/[^0-9]/g, ''))} /></div>
+      </div>
+      ${correct && total && !valid && book.trim() && html`<div class="tiny" style="color:var(--bad)">맞은 문제 수가 전체보다 많을 수 없어요</div>`}
+      ${pct != null && html`<div class="tip"><b>점수 ${pct}점</b>${pct >= 90 ? ' · 최고예요! 🎉' : pct >= 70 ? ' · 잘했어요!' : ' · 틀린 문제 다시 확인해 봐요'}</div>`}
+      <button class="btn primary lg" disabled=${!valid} onClick=${() => onSave({ book: book.trim(), correct: c, total: n, at: Date.now() })}>${mode === 'edit' ? '저장' : '기록하고 완료 체크'}</button>
+    </div>
+  <//>`;
 }
