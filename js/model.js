@@ -168,6 +168,26 @@ export function tasksFor(kid, date, planned = false) {
     const dow = dowOf(date);
     for (const h of vals(kid.habits)) {
       if (!h.active) continue;
+      if (h.dueDow !== undefined && h.dueDow !== null && h.dueDow !== '') {
+        // 마감형: 마감 요일까지 남은 기간 동안 매일 보이고, 그 사이 한 번만 하면 완료
+        if ((h.from && date < h.from) || (h.until && date > h.until)) continue;
+        const did = `habit_${h.id}`;
+        if (out[did]) continue;
+        const DN = ['일', '월', '화', '수', '목', '금', '토'];
+        const due = Number(h.dueDow), win = Math.min(7, Math.max(1, Number(h.window) || 6));
+        const k = (due - dow + 7) % 7;
+        if (k > win - 1) continue;
+        const dueDate = addDays(date, k), start = addDays(dueDate, -(win - 1));
+        const t = { id: did, title: h.title, subject: h.subject || '숙제', note: `${DN[due]}요일까지 · ${k === 0 ? '오늘 마감!' : 'D-' + k}`, talents: h.talents ?? REWARDS.habit, source: 'habit', order: k === 0 ? 0 : (h.order ?? 9), done: false, virtual: true, noTimer: !!h.noTimer, dueDate };
+        for (let i = 0; i < win; i++) {
+          const d2 = addDays(start, i);
+          if (d2 === date) continue;
+          const other = ((kid.tasks || {})[d2] || {})[did];
+          if (other && other.done) { t.done = true; t.lockedDone = true; t.note = `${DN[due]}요일까지 · ${DN[dowOf(d2)]}요일에 완료`; break; }
+        }
+        out[did] = t;
+        continue;
+      }
       const days = Array.isArray(h.days) && h.days.length ? h.days.map(Number) : null;
       if (days && !days.includes(dow)) continue;
       if ((h.from && date < h.from) || (h.until && date > h.until)) continue;
@@ -193,7 +213,7 @@ export function tasksFor(kid, date, planned = false) {
 }
 
 export function toggleTask(kidId, date, task) {
-  if (task.lockedDone) return { done: true, blocked: true, msg: '이번 주에 이미 완료했어요!' };
+  if (task.lockedDone) return { done: true, blocked: true, msg: task.dueDate ? '이번 마감 기간에 이미 완료했어요!' : '이번 주에 이미 완료했어요!' };
   const kid = getKid(kidId);
   const path = `kids/${kidId}/tasks/${date}/${task.id}`;
   const ledgerId = `task_${date.replace(/-/g, '')}_${task.id}`;
@@ -209,7 +229,8 @@ export function toggleTask(kidId, date, task) {
     db.multi(updates);
     // 오늘 모두 완료 보너스
     const after = tasksFor(getKid(kidId), date);
-    const allDone = after.length > 0 && after.every((t) => t.done);
+    const counted = after.filter((t) => t.done || !(t.dueDate && t.dueDate > date));
+    const allDone = counted.length > 0 && counted.every((t) => t.done);
     const acId = `allclear_${date.replace(/-/g, '')}`;
     if (allDone && !(getKid(kidId).ledger || {})[acId]) {
       db.set(`kids/${kidId}/ledger/${acId}`, { id: acId, ts: Date.now(), date, kind: 'bonus', talents: REWARDS.allClear, reason: '오늘 할 일 모두 완료 보너스' });
