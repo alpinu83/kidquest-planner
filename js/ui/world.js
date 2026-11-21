@@ -7,6 +7,8 @@ import * as M from '../model.js';
 import { MAX_PET_XP } from '../../data/pets.js';
 import { SPRITES, TERRAIN, WORLD_BG, onGround, inPond } from '../../data/world.js';
 import { E, sfx, vibrate, shortDate, dateKey } from '../util.js';
+import * as db from '../store.js';
+import { toast } from './core.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -842,7 +844,7 @@ function hexA(hex, a) { const h = hex.replace('#', ''); const n = parseInt(h.len
 function shade(hex, f) { const h = hex.replace('#', ''); const n = parseInt(h, 16); const m = (v) => Math.round(clamp(v * (1 + f), 0, 255)); return `rgb(${m((n >> 16) & 255)},${m((n >> 8) & 255)},${m(n & 255)})`; }
 
 // ---------------------------------------------------------------- 화면
-export function PetWorld({ kid, onBack }) {
+function PetWorldInner({ kid, onBack }) {
   const pets = M.petsOf(kid);
   const legends = pets.filter((p) => p.xp >= MAX_PET_XP && SPRITES[p.species.id]);
   const key = legends.map((p) => p.id).join('|');
@@ -951,5 +953,75 @@ export function PetWorld({ kid, onBack }) {
         <button class="btn sm pw-glass" onClick=${() => { eng.current && eng.current.gather(); setHint(false); }}><img src=${E('Party popper')} width="20" height="20" alt="" />모두 모여!</button>
       </div>
     </div>`}
+  </div>`;
+}
+
+
+// ---------------------------------------------------------------- 하루 이용 시간 제한
+// 저장: kids/{아이}/limits/worldMin (분, 기본 15) · kids/{아이}/worldUsage/{날짜} = { sec, bonusMin }
+export const WORLD_DEFAULT_MIN = 15;
+export function worldLimitMin(kid) {
+  const v = kid && kid.limits ? kid.limits.worldMin : undefined;
+  if (v !== undefined && v !== null && v !== '' && Number.isFinite(Number(v))) return Math.max(0, Number(v));
+  const s = (db.getState().settings || {}).worldLimitMin;
+  return Number.isFinite(Number(s)) && s !== null && s !== '' ? Number(s) : WORLD_DEFAULT_MIN;
+}
+export function worldUsage(kid, day = dateKey(new Date())) {
+  const u = ((kid && kid.worldUsage) || {})[day] || {};
+  const used = Math.max(0, Number(u.sec) || 0);
+  const limit = (worldLimitMin(kid) + (Number(u.bonusMin) || 0)) * 60;
+  return { used, limit, left: Math.max(0, limit - used), bonusMin: Number(u.bonusMin) || 0 };
+}
+const fmtLeft = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+export function PetWorld({ kid, onBack }) {
+  const day = dateKey(new Date());
+  const base = useRef(null);
+  const elapsed = useRef(0);
+  const [, setTick] = useState(0);
+  const warned = useRef(false);
+  const u = worldUsage(kid, day);
+  if (base.current === null) base.current = u.used;
+  const used = Math.max(u.used, base.current + elapsed.current);
+  const left = Math.max(0, u.limit - used);
+  const locked = left <= 0;
+
+  function flush() {
+    const total = Math.max(worldUsage(M.getKid(kid.id) || kid, day).used, base.current + elapsed.current);
+    db.set(`kids/${kid.id}/worldUsage/${day}/sec`, Math.round(total));
+  }
+  useEffect(() => {
+    if (locked) return;
+    let sinceFlush = 0;
+    const t = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      elapsed.current += 1; sinceFlush += 1;
+      const now = worldUsage(M.getKid(kid.id) || kid, day);
+      const l = now.limit - Math.max(now.used, base.current + elapsed.current);
+      if (l <= 60 && l > 0 && !warned.current) { warned.current = true; toast('펫 월드 시간이 1분 남았어요!', 'Alarm clock'); }
+      if (sinceFlush >= 15 || l <= 0) { sinceFlush = 0; flush(); }
+      setTick((x) => x + 1);
+    }, 1000);
+    const onHide = () => { if (document.visibilityState !== 'visible') flush(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onHide); if (elapsed.current > 0) flush(); };
+  }, [locked]);
+
+  if (locked) {
+    return html`<div class="pw fade-in" style="display:grid;place-items:center;background:linear-gradient(160deg,#1E1B4B,#4C1D95)">
+      <div style="text-align:center;color:#fff;padding:24px;max-width:420px">
+        <img src=${E('Crescent moon')} width="96" height="96" alt="" />
+        <h2 style="font-size:24px;font-weight:900;margin-top:10px">오늘 펫 월드 시간을 다 썼어요</h2>
+        <p style="opacity:.85;margin-top:8px">펫들은 이제 쉬는 시간이에요. 하루 ${Math.round(u.limit / 60)}분 · 내일 다시 놀러 와요!</p>
+        <p style="opacity:.7;font-size:13px;margin-top:4px">더 놀고 싶으면 부모님께 시간을 부탁해 보세요.</p>
+        <button class="btn gold lg" style="margin-top:16px" onClick=${onBack}>내 펫으로 돌아가기</button>
+      </div>
+    </div>`;
+  }
+  return html`<div style="position:relative;height:100%">
+    <${PetWorldInner} kid=${kid} onBack=${onBack} />
+    <div class="pw-glass" style=${`position:absolute;left:50%;transform:translateX(-50%);top:${window.innerWidth < 640 ? 56 : 14}px;z-index:6;display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-weight:800;font-size:14px;${left <= 60 ? 'color:#E11D48' : 'color:#171A2C'}`}>
+      <img src=${E('Alarm clock')} width="20" height="20" alt="" />남은 시간 ${fmtLeft(left)}
+    </div>
   </div>`;
 }

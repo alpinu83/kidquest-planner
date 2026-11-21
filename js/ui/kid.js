@@ -3,7 +3,7 @@ import { PetStage, EvolutionOverlay, EvolutionLine, MoodBadge, petDisplayName } 
 import { TaskList, DateNav, CreativeCards, MissionModal } from './missions.js';
 import { VocabTab } from './vocab.js';
 import { TalkView, Avatar } from './talk.js';
-import { PetWorld } from './world.js';
+import { PetWorld, worldUsage } from './world.js';
 import * as M from '../model.js';
 import { unreadCount } from '../members.js';
 import { FOODS } from '../../data/shop.js';
@@ -265,7 +265,7 @@ function PetRoom({ kid, openWorld }) {
           <div class="row"><h2 style="font-size:22px;font-weight:900;letter-spacing:-.03em">${petDisplayName(pet)}</h2>
             <button class="icon-btn sm" title="이름 짓기" onClick=${() => setRename(true)}><${Icon} name="pencil" size=${15} /></button></div>
         </div>
-        <div class="row" style="gap:6px"><${MoodBadge} mood=${mood} /><button class="btn sm world-btn" onClick=${openWorld}><${Icon} name="globe" size=${16} />펫 월드</button></div>
+        <div class="row" style="gap:6px"><${MoodBadge} mood=${mood} /><button class="btn sm world-btn" onClick=${openWorld}><${Icon} name="globe" size=${16} />펫 월드${(() => { const wu = worldUsage(kid); return wu.left > 0 ? ` · ${Math.ceil(wu.left / 60)}분` : ' · 오늘 끝'; })()}</button></div>
       </div>
       <div class="pet-stage-wrap" ref=${stageRef}>
         <${PetStage} pet=${pet} mood=${mood} interactive=${true} fx=${fx} />
@@ -291,7 +291,7 @@ function PetRoom({ kid, openWorld }) {
       </section>`;
   const dexCard = html`<section class="card fill">
         <div class="card-h"><${Emo} name="Trophy" size=${28} /><div class="grow"><h2>펫 도감</h2><div class="muted small">전설 ${pets.filter((p) => p.xp >= MAX_PET_XP).length}/${SPECIES.length}</div></div>
-          <button class="btn sm world-btn" onClick=${openWorld}><${Icon} name="globe" size=${16} />펫 월드</button>
+          <button class="btn sm world-btn" onClick=${openWorld}><${Icon} name="globe" size=${16} />펫 월드${(() => { const wu = worldUsage(kid); return wu.left > 0 ? ` · ${Math.ceil(wu.left / 60)}분` : ' · 오늘 끝'; })()}</button>
           <button class="btn sm" onClick=${() => setAdopt(true)}><${Icon} name="egg" size=${16} />입양</button></div>
         <div class="card-body"><div class="dex">
           ${SPECIES.map((sp) => {

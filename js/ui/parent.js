@@ -15,6 +15,7 @@ import { parseHomeworkText, runBrowserOcr } from '../ocr.js';
 import { E, todayKey, addDays, DAY_NAMES, uid, timeAgo, shortDate, hhmm } from '../util.js';
 import qrcode from '../../vendor/qrcode.js';
 import * as I from '../ile.js';
+import { worldLimitMin, worldUsage } from './world.js';
 
 const SECTIONS = [
   { id: 'overview', label: '대시보드', short: '대시', icon: 'layout-dashboard' },
@@ -462,6 +463,8 @@ function SettingsAdmin({ kids }) {
         ${kids.map((k) => html`<div class="list-row" key=${k.id}><b class="grow">${k.profile.name}</b>
           <select class="select" style="width:auto;height:36px" value=${k.profile.grade} onChange=${(e) => db.set(`kids/${k.id}/profile/grade`, Number(e.target.value))}>${[1, 2, 3, 4, 5, 6].map((g) => html`<option value=${g}>${g}학년</option>`)}</select>
           <select class="select" style="width:auto;height:36px" value=${k.profile.colorId} onChange=${(e) => db.set(`kids/${k.id}/profile/colorId`, e.target.value)}>${KID_COLORS.map((c) => html`<option value=${c.id}>${c.name}</option>`)}</select></div>`)}
+        <div class="label" style="margin-top:10px">펫 월드 하루 이용 시간 <span class="tiny muted">· 다 쓰면 그날은 펫 월드가 잠겨요</span></div>
+        ${kids.map((k) => html`<${WorldLimitRow} key=${'wl' + k.id} kid=${k} />`)}
         <hr class="sep" />
         <div class="row wrap">
           <button class="btn" onClick=${() => { const blob = new Blob([JSON.stringify(db.getState(), null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `kidquest-backup-${todayKey(0)}.json`; a.click(); }}><${Icon} name="download" size=${18} />JSON 백업</button>
@@ -616,4 +619,18 @@ function ILEAdmin({ kid }) {
     <div class="row wrap" style="margin-top:12px;gap:8px"><b class="small">모의고사</b>${mocks.length ? mocks.slice(0, 5).map((m) => html`<span class="badge gold" key=${m.id}>${shortDate(new Date(m.at).toISOString().slice(0, 10))} ${m.score}/${m.total}</span>`) : html`<span class="small muted">아직 없음</span>`}</div>
     ${weak.length > 0 && html`<div class="row wrap" style="margin-top:8px;gap:6px"><b class="small">약한 단어</b>${weak.map((w) => html`<span class="badge bad" key=${w.id}>${w.word} ${I.wordMastery(kid, lesson, w.id).pct}%</span>`)}</div>`}
   </section>`;
+}
+
+function WorldLimitRow({ kid }) {
+  const [v, setV] = useState(String(worldLimitMin(kid)));
+  const u = worldUsage(kid);
+  const day = todayKey(0);
+  return html`<div class="list-row" style="flex-wrap:wrap">
+    <b style="min-width:64px">${kid.profile.name}</b>
+    <div class="row" style="gap:6px"><input class="input" type="number" min="0" max="240" inputmode="numeric" style="width:84px;height:36px" value=${v} onInput=${(e) => setV(e.target.value.replace(/[^0-9]/g, ''))} /><span class="small">분</span>
+      <button class="btn sm" onClick=${() => { const n = Math.min(240, Math.max(0, parseInt(v, 10) || 0)); db.set(`kids/${kid.id}/limits/worldMin`, n); toast(`${kid.profile.name} 펫 월드 하루 ${n}분으로 저장했어요`, 'Alarm clock'); }}>저장</button></div>
+    <span class="grow"></span>
+    <button class="btn sm" onClick=${() => { db.set(`kids/${kid.id}/worldUsage/${day}/bonusMin`, (u.bonusMin || 0) + 10); toast(`${kid.profile.name}에게 오늘 펫 월드 10분을 더 줬어요`, 'Wrapped gift'); }}>오늘 +10분</button>
+    <div class="tiny muted" style="flex-basis:100%">오늘 ${Math.floor(u.used / 60)}분 사용 · ${Math.ceil(u.left / 60)}분 남음${u.bonusMin ? ` (추가 ${u.bonusMin}분 포함)` : ''}</div>
+  </div>`;
 }
