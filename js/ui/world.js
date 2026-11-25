@@ -992,19 +992,26 @@ export function PetWorld({ kid, onBack }) {
   }
   useEffect(() => {
     if (locked) return;
+    // 실제 시간(벽시계) 기준으로 재고, 5초마다 저장 → 앱을 껐다 켜거나 새로고침해도 시간이 줄지 않아요
+    let last = Date.now();
     let sinceFlush = 0;
     const t = setInterval(() => {
+      const nowMs = Date.now();
+      const dt = Math.min(5, Math.max(0, (nowMs - last) / 1000));
+      last = nowMs;
       if (document.visibilityState !== 'visible') return;
-      elapsed.current += 1; sinceFlush += 1;
+      elapsed.current += dt; sinceFlush += dt;
       const now = worldUsage(M.getKid(kid.id) || kid, day);
       const l = now.limit - Math.max(now.used, base.current + elapsed.current);
       if (l <= 60 && l > 0 && !warned.current) { warned.current = true; toast('펫 월드 시간이 1분 남았어요!', 'Alarm clock'); }
-      if (sinceFlush >= 15 || l <= 0) { sinceFlush = 0; flush(); }
+      if (sinceFlush >= 5 || l <= 0) { sinceFlush = 0; flush(); }
       setTick((x) => x + 1);
     }, 1000);
-    const onHide = () => { if (document.visibilityState !== 'visible') flush(); };
+    const onHide = () => { if (document.visibilityState !== 'visible') flush(); else last = Date.now(); };
+    const onPageHide = () => flush();
     document.addEventListener('visibilitychange', onHide);
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onHide); if (elapsed.current > 0) flush(); };
+    window.addEventListener('pagehide', onPageHide);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onHide); window.removeEventListener('pagehide', onPageHide); if (elapsed.current > 0) flush(); };
   }, [locked]);
 
   if (locked) {

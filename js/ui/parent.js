@@ -164,14 +164,14 @@ function SubCard({ it }) {
   useEffect(() => { if (it.media) db.getMedia(it.media).then(setImg); }, [it.media]);
   const cat = CATEGORIES[it.cat] || CATEGORIES.art;
   return html`<div class="sub-card">
-    ${it.media && html`<div class="sc-img">${img ? html`<img src=${img} alt="" />` : html`<span class="muted small">불러오는 중…</span>`}</div>`}
+    ${it.media && html`<div class="sc-img" style=${img && String(img).startsWith('data:audio') ? 'height:auto;padding:12px' : ''}>${img ? (String(img).startsWith('data:audio') ? html`<audio controls src=${img} style="width:100%"></audio>` : html`<img src=${img} alt="" />`) : html`<span class="muted small">불러오는 중…</span>`}</div>`}
     <div class="sc-body">
       <div class="row"><img src=${E(cat.e)} width="22" height="22" alt="" /><b class="grow small">${it.title}</b></div>
       <div class="tiny muted">${it.kid.profile.name} · ${shortDate(it.date)} ${it.at ? hhmm(it.at) : ''}</div>
       ${it.text && html`<div class="sc-text">${it.text}</div>`}
       ${it.answer && html`<span class="badge good">정답 ${it.answer}</span>`}
       ${it.liked ? html`<div class="badge bad">❤ 칭찬 완료${it.comment ? ' · ' + it.comment : ''}</div>`
-        : html`<div class="row"><input class="input" style="height:36px;font-size:14px" placeholder="칭찬 한마디" value=${comment} onInput=${(e) => setComment(e.target.value)} />
+        : html`<div class="row"><input class="input" style="height:36px;font-size:16px" placeholder="칭찬 한마디" value=${comment} onInput=${(e) => setComment(e.target.value)} />
           <button class="btn sm danger" onClick=${() => { M.likeCreative(it.kid.id, it.date, it.mid, comment.trim()); toast(`${it.kid.profile.name}에게 하트를 보냈어요 (+1)`, 'Red heart'); }}>❤</button></div>`}
     </div>
   </div>`;
@@ -245,7 +245,7 @@ function HabitAdmin({ kid }) {
   const dayText = (h) => h.dueDow !== undefined && h.dueDow !== null && h.dueDow !== '' ? `${DAY_NAMES[Number(h.dueDow)]}요일까지 (${h.window || 6}일 중 1회)` : !h.days || !h.days.length ? '매일' : [1, 2, 3, 4, 5, 6, 0].filter((d) => h.days.map(Number).includes(d)).map((d) => DAY_NAMES[d]).join('·') + (h.weekly ? ' 중 1회' : '');
   function add() {
     if (!f.title.trim()) return toast('할 일 이름을 입력하세요', 'Memo');
-    const data = { title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: f.days.length ? [...f.days].sort() : null, weekly: !!f.weekly && f.days.length > 1, noTimer: !!f.noTimer, dueDow: f.dueDow === '' ? null : Number(f.dueDow), window: f.dueDow === '' ? null : Math.min(7, Math.max(1, Number(f.window) || 6)), record: f.record ? 'book' : null };
+    const data = { title: f.title.trim(), subject: f.subject, talents: Number(f.talents) || 0, days: f.days.length ? [...f.days].sort() : null, weekly: f.dueDow === '' && !!f.weekly && f.days.length > 1, noTimer: !!f.noTimer, dueDow: f.dueDow === '' ? null : Number(f.dueDow), window: f.dueDow === '' ? null : Math.min(7, Math.max(1, Number(f.window) || 6)), record: f.record ? 'book' : null };
     if (editId) {
       db.update(`kids/${kid.id}/habits/${editId}`, data);
       toast('반복 할 일을 수정했어요', 'Spiral calendar');
@@ -266,7 +266,7 @@ function HabitAdmin({ kid }) {
     <div class="stack" style="margin-top:10px">
       <div class="form-grid">
         <div class="field" style="grid-column:span 2"><label>할 일</label><input class="input" placeholder="예: 구몬 하루 분량 풀기" value=${f.title} onInput=${(e) => set('title', e.target.value)} /></div>
-        <div class="field"><label>과목</label><select class="select" value=${f.subject} onChange=${(e) => set('subject', e.target.value)}>${['생활', '수학', '영어', '국어', '학습지', '과학', '숙제'].map((s) => html`<option>${s}</option>`)}</select></div>
+        <div class="field"><label>과목</label><select class="select" value=${f.subject} onChange=${(e) => set('subject', e.target.value)}>${['생활', '수학', '영어', '국어', '학습지', '과학', '사회', '숙제'].map((s) => html`<option>${s}</option>`)}</select></div>
         <div class="field"><label>달란트</label><input class="input" type="number" min="0" max="10" value=${f.talents} onInput=${(e) => set('talents', e.target.value)} /></div>
       </div>
       <div class="row wrap small" style="gap:8px"><span class="bold">마감일 방식</span><select class="select" style="width:auto;height:36px" value=${f.dueDow} onChange=${(e) => set('dueDow', e.target.value)}><option value="">사용 안 함 (요일마다 반복)</option>${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<option value=${d}>${DAY_NAMES[d]}요일까지 완료</option>`)}</select>${f.dueDow !== '' && html`<span>마감 전</span><input class="input" type="number" min="1" max="7" style="width:64px;height:36px" value=${f.window} onInput=${(e) => set('window', e.target.value)} /><span>일 동안 보이고 한 번 하면 완료</span>`}</div>
@@ -355,7 +355,7 @@ function TalentAdmin({ kid }) {
 function ScheduleAdmin({ kid }) {
   const [f, setF] = useState({ title: '', type: '학원', start: '15:30', end: '17:00', note: '', days: [1] });
   const set = (k, v) => setF({ ...f, [k]: v });
-  const items = Object.values(kid.academies || {}).filter(Boolean).sort((a, b) => (a.days[0] ?? 9) - (b.days[0] ?? 9) || a.start.localeCompare(b.start));
+  const items = Object.values(kid.academies || {}).filter(Boolean).sort((a, b) => ((a.days || [])[0] ?? 9) - ((b.days || [])[0] ?? 9) || String(a.start || '').localeCompare(String(b.start || '')));
   return html`<div class="stack fade-in" style="gap:18px">
     <section class="card"><${WeekGrid} kid=${kid} /></section>
     <div class="grid g-2">
@@ -636,7 +636,7 @@ function WorldLimitRow({ kid }) {
     <div class="row" style="gap:6px"><input class="input" type="number" min="0" max="240" inputmode="numeric" style="width:84px;height:36px" value=${v} onInput=${(e) => setV(e.target.value.replace(/[^0-9]/g, ''))} /><span class="small">분</span>
       <button class="btn sm" onClick=${() => { const n = Math.min(240, Math.max(0, parseInt(v, 10) || 0)); db.set(`kids/${kid.id}/limits/worldMin`, n); toast(`${kid.profile.name} 펫 월드 하루 ${n}분으로 저장했어요`, 'Alarm clock'); }}>저장</button></div>
     <span class="grow"></span>
-    <button class="btn sm" onClick=${() => { db.set(`kids/${kid.id}/worldUsage/${day}/bonusMin`, (u.bonusMin || 0) + 10); toast(`${kid.profile.name}에게 오늘 펫 월드 10분을 더 줬어요`, 'Wrapped gift'); }}>오늘 +10분</button>
+    <button class="btn sm" onClick=${() => { db.set(`kids/${kid.id}/worldUsage/${day}/bonusMin`, (worldUsage(M.getKid(kid.id) || kid, day).bonusMin || 0) + 10); toast(`${kid.profile.name}에게 오늘 펫 월드 10분을 더 줬어요`, 'Wrapped gift'); }}>오늘 +10분</button>
     <div class="tiny muted" style="flex-basis:100%">오늘 ${Math.floor(u.used / 60)}분 사용 · ${Math.ceil(u.left / 60)}분 남음${u.bonusMin ? ` (추가 ${u.bonusMin}분 포함)` : ''}</div>
   </div>`;
 }

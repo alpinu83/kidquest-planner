@@ -4,6 +4,8 @@ import * as M from '../model.js';
 import * as db from '../store.js';
 import { CATEGORIES } from '../../data/missions.js';
 import { E, uid, normalizeAnswer, speak, sfx, vibrate, compressImage, dayLabel, todayKey, addDays } from '../util.js';
+import * as SP from '../speech.js';
+import { SpeakTrainer } from './speak.js';
 
 export function TaskList({ kid, date, editable = false, compact = false, allowKidAdd = false }) {
   const tasks = M.tasksFor(kid, date);
@@ -34,10 +36,13 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
 
   function toggle(t) {
     if (!editable && date > todayKey(0)) return toast('미래의 숙제는 그날 체크할 수 있어요', 'Spiral calendar');
-    // 공부 할 일은 타이머 기록이 있어야 완료 가능 (아이 화면)
-    if (!editable && !t.done && M.isStudyTask(t) && M.timerElapsed(M.timerOf(kid, date, t.id)) <= 0) {
+    // 그저께 이전 숙제는 아이 화면에서 바꿀 수 없음 (지난 날짜 몰아서 체크하기 방지 · 어제 것은 가능)
+    if (!editable && date < todayKey(-1)) return toast('지난 숙제는 부모님께 말씀드려 주세요', 'Thinking face');
+    // 공부 할 일은 타이머로 최소 2분 이상 공부해야 완료 가능 (아이 화면)
+    if (!editable && !t.done && M.isStudyTask(t) && M.timerElapsed(M.timerOf(kid, date, t.id)) < M.MIN_STUDY_SEC) {
       sfx('bad'); vibrate(30);
-      return toast('공부 타이머를 켜고 공부한 다음 체크할 수 있어요', 'Alarm clock', 3000);
+      const sec = M.timerElapsed(M.timerOf(kid, date, t.id));
+      return toast(sec > 0 ? `공부 시간이 ${M.fmtDur(sec)}이에요. 2분 이상 공부한 다음 체크할 수 있어요` : '공부 타이머를 켜고 공부한 다음 체크할 수 있어요', 'Alarm clock', 3000);
     }
     if (!t.done && t.record) { setRecFor({ t, mode: 'new' }); return; }
     afterToggle(M.toggleTask(kid.id, date, t));
@@ -61,8 +66,8 @@ export function TaskList({ kid, date, editable = false, compact = false, allowKi
 
   if (!tasks.length && !allowKidAdd) return html`<${Empty} emoji="Party popper" title="오늘은 등록된 숙제가 없어요" sub="창의 미션에 도전해 볼까요?" />`;
   return html`<div>
-    ${tasks.map((t) => html`<div key=${t.id} class=${'task ' + (t.done ? 'done' : '')}>
-      <button class=${'check ' + (t.done ? 'on' : '') + (!editable && !t.done && M.isStudyTask(t) && M.timerElapsed(M.timerOf(kid, date, t.id)) <= 0 ? ' locked' : '')} aria-label=${t.done ? '완료 취소' : '완료'} onClick=${() => toggle(t)}><${Icon} name="check" size=${20} stroke=${3} /></button>
+    ${tasks.map((t) => html`<div key=${t.id} class=${'task ' + (t.done ? 'done' : '') + (compact ? ' cmp' : '')}>
+      <button class=${'check ' + (t.done ? 'on' : '') + (!editable && !t.done && M.isStudyTask(t) && M.timerElapsed(M.timerOf(kid, date, t.id)) < M.MIN_STUDY_SEC ? ' locked' : '')} aria-label=${t.done ? '완료 취소' : '완료'} onClick=${() => toggle(t)}><${Icon} name="check" size=${20} stroke=${3} /></button>
       <div class="grow">
         <div class="task-title">${t.title}</div>
         <div class="task-meta">
@@ -148,11 +153,11 @@ export function MissionModal({ kid, date, mission, onClose }) {
       <div class="row wrap"><span class="badge" style=${`background:${cat.color}1A;color:${cat.color}`}>${cat.name}</span><${Reward} n=${3} /></div>
       <p style="font-size:16px;color:var(--text-2)">${mission.desc}</p>
       ${done ? html`<${DoneView} done=${done} />` : html`
-        ${mission.type === 'draw' && html`<${DrawPad} busy=${busy} onSave=${async (dataUrl) => { const id = uid('img'); setBusy(true); await db.putMedia(id, dataUrl); finish({ media: id }); }} />`}
+        ${mission.type === 'draw' && html`<${DrawPad} busy=${busy} onSave=${async (dataUrl) => { const id = uid('img'); setBusy(true); try { await db.putMedia(id, dataUrl); finish({ media: id }); } catch (e) { setBusy(false); toast('저장하지 못했어요. 인터넷 연결을 확인하고 다시 해 보세요', 'Thinking face'); } }} />`}
         ${mission.type === 'write' && html`<${WriteBox} min=${mission.min || 30} busy=${busy} onSave=${(text) => finish({ text })} />`}
-        ${mission.type === 'photo' && html`<${PhotoBox} busy=${busy} onSave=${async (dataUrl) => { const id = uid('img'); setBusy(true); await db.putMedia(id, dataUrl); finish({ media: id }); }} />`}
+        ${mission.type === 'photo' && html`<${PhotoBox} busy=${busy} onSave=${async (dataUrl) => { const id = uid('img'); setBusy(true); try { await db.putMedia(id, dataUrl); finish({ media: id }); } catch (e) { setBusy(false); toast('저장하지 못했어요. 인터넷 연결을 확인하고 다시 해 보세요', 'Thinking face'); } }} />`}
         ${mission.type === 'quiz' && html`<${QuizBox} mission=${mission} onSolved=${(answer) => finish({ answer })} />`}
-        ${mission.type === 'speak' && html`<${SpeakBox} mission=${mission} onDone=${(heard) => finish({ text: heard || mission.say })} />`}
+        ${mission.type === 'speak' && html`<${SpeakBox} kid=${kid} mission=${mission} busy=${busy} onDone=${(heard) => finish({ text: heard || mission.say })} onRecorded=${async (r) => { const id = uid('aud'); setBusy(true); try { await db.putMedia(id, r.dataUrl); finish({ media: id, text: '🎤 녹음 제출 · ' + mission.say }); } catch (e) { setBusy(false); toast('녹음 업로드 실패: ' + e.message, 'Thinking face'); } }} />`}
         ${mission.type === 'check' && html`<${CheckBox} busy=${busy} onSave=${(memo) => finish({ text: memo })} />`}
       `}
     </div>
@@ -164,7 +169,7 @@ function DoneView({ done }) {
   useEffect(() => { if (done.media) db.getMedia(done.media).then(setImg); }, [done.media]);
   return html`<div class="stack">
     <div class="tip"><${Emo} name="Party popper" size=${22} /><div><b>완료했어요!</b> ${new Date(done.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div></div>
-    ${done.media && (img ? html`<img src=${img} alt="내 작품" style="width:100%;border-radius:18px;border:1px solid var(--line)" />` : html`<div class="muted small">작품 불러오는 중…</div>`)}
+    ${done.media && (img ? (SP.isAudio(img) ? html`<audio controls src=${img} style="width:100%"></audio>` : html`<img src=${img} alt="내 작품" style="width:100%;border-radius:18px;border:1px solid var(--line)" />`) : html`<div class="muted small">작품 불러오는 중…</div>`)}
     ${done.text && html`<div class="card flat tight" style="white-space:pre-wrap">${done.text}</div>`}
     ${done.answer && html`<div class="badge good">정답: ${done.answer}</div>`}
     ${done.liked && html`<div class="tip" style="background:var(--bad-soft)"><${Emo} name="Red heart" size=${22} /><div><b>부모님 하트 칭찬!</b>${done.comment ? ` "${done.comment}"` : ''}</div></div>`}
@@ -179,6 +184,7 @@ export function DrawPad({ onSave, busy }) {
   const hist = useRef([]);
   const drawing = useRef(false);
   const last = useRef(null);
+  const inked = useRef(0);
 
   useEffect(() => {
     const c = ref.current;
@@ -218,6 +224,7 @@ export function DrawPad({ onSave, busy }) {
     ctx.moveTo(lx, ly);
     ctx.lineTo(x + 0.01, y + 0.01);
     ctx.stroke();
+    inked.current += 1;
     last.current = [x, y];
   }
   function up() { drawing.current = false; }
@@ -232,6 +239,7 @@ export function DrawPad({ onSave, busy }) {
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.restore();
   }
   function save() {
+    if (inked.current < 40) return toast('그림을 조금 더 그려 주세요!', 'Artist palette');
     const c = ref.current;
     const out = document.createElement('canvas');
     const scale = Math.min(1, 800 / c.width);
@@ -252,13 +260,27 @@ export function DrawPad({ onSave, busy }) {
   </div>`;
 }
 
+// 의미 없는 글(자음만, 같은 글자 반복, 키보드 마구 누르기)은 제출 불가
+export function writingProblem(text, min) {
+  const core = String(text || '').replace(/\s/g, '');
+  if (core.length < min) return '';
+  const jamo = (core.match(/[\u3131-\u318E]/g) || []).length;
+  if (jamo / core.length > 0.15) return 'ㅂㅈㄷ처럼 자음·모음만 쓴 글은 제출할 수 없어요. 완성된 글자로 써 주세요.';
+  if (/(.)\1{4,}/.test(core)) return '같은 글자를 계속 반복하면 안 돼요.';
+  if (new Set(core).size < Math.min(12, Math.ceil(core.length / 3))) return '여러 가지 단어를 써서 문장으로 써 주세요.';
+  const words = String(text).trim().split(/\s+/).filter((w) => /[가-힣a-zA-Z]{2,}/.test(w));
+  if (words.length < Math.max(3, Math.floor(min / 10))) return '띄어쓰기를 한 문장으로 써 주세요.';
+  return '';
+}
 function WriteBox({ min, onSave, busy }) {
   const [text, setText] = useState('');
   const len = text.replace(/\s/g, '').length;
+  const problem = writingProblem(text, min);
   return html`<div class="stack">
     <textarea class="textarea" style="min-height:180px" placeholder="여기에 자유롭게 써 보세요" value=${text} onInput=${(e) => setText(e.target.value)}></textarea>
+    ${problem && html`<div class="tip small" style="background:var(--warn-soft)"><${Emo} name="Thinking face" size=${20} /><div>${problem}</div></div>`}
     <div class="row between"><span class=${'small ' + (len >= min ? '' : 'muted')}>${len} / ${min}자 이상</span>
-      <button class="btn primary" disabled=${len < min || busy} onClick=${() => onSave(text.trim())}>제출하기</button></div>
+      <button class="btn primary" disabled=${len < min || !!problem || busy} onClick=${() => onSave(text.trim())}>제출하기</button></div>
   </div>`;
 }
 
@@ -267,75 +289,46 @@ function PhotoBox({ onSave, busy }) {
   async function onFile(e) {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-    setImg(await compressImage(f, 900, 0.72));
+    try { setImg(await compressImage(f, 900, 0.72)); } catch (_) { toast('사진을 불러오지 못했어요. 다른 사진으로 해 보세요', 'Thinking face'); }
   }
   return html`<div class="stack">
     ${img ? html`<img src=${img} alt="미리보기" style="width:100%;border-radius:18px;border:1px solid var(--line)" />` : html`<label class="card flat" style="display:grid;place-items:center;gap:6px;padding:30px;cursor:pointer;border-style:dashed">
       <${Emo} name="Video camera" size=${56} /><b>사진 찍기 / 앨범에서 고르기</b><span class="small muted">찍은 사진은 가족만 볼 수 있어요</span>
-      <input type="file" accept="image/*" capture="environment" class="sr" onChange=${onFile} />
+      <input type="file" accept="image/*" class="sr" onChange=${onFile} />
     </label>`}
-    ${img && html`<div class="row"><label class="btn"><${Icon} name="camera" size=${18} />다시 찍기<input type="file" accept="image/*" capture="environment" class="sr" onChange=${onFile} /></label><span class="grow"></span><button class="btn primary" disabled=${busy} onClick=${() => onSave(img)}>${busy ? '업로드 중…' : '인증하기'}</button></div>`}
+    ${img && html`<div class="row"><label class="btn"><${Icon} name="camera" size=${18} />다시 찍기<input type="file" accept="image/*" class="sr" onChange=${onFile} /></label><span class="grow"></span><button class="btn primary" disabled=${busy} onClick=${() => onSave(img)}>${busy ? '업로드 중…' : '인증하기'}</button></div>`}
   </div>`;
 }
 
+// 정답 비교: 띄어쓰기·대소문자·쉼표 무시, 끝의 단위(개, 원, 명…)는 있어도 없어도 정답. 다른 숫자가 섞인 답(125 ≠ 25)은 오답
+export function quizMatch(answers, input) {
+  const canon = (s) => normalizeAnswer(String(s || '').replace(/,/g, '')).replace(/(개|명|살|원|도|점|번|마리|장|권|cm|m|kg|시|분|초|층|가지)$/i, '');
+  const v = canon(input);
+  if (!v) return false;
+  return answers.some((a) => canon(a) === v);
+}
 function QuizBox({ mission, onSolved }) {
   const [ans, setAns] = useState('');
   const [tries, setTries] = useState(0);
   const [wrong, setWrong] = useState(false);
   function check() {
-    const ok = (mission.answers || []).some((a) => normalizeAnswer(a) === normalizeAnswer(ans)) || (mission.answers || []).some((a) => normalizeAnswer(ans).includes(normalizeAnswer(a)) && normalizeAnswer(a).length >= 2);
+    const ok = quizMatch(mission.answers || [], ans);
     if (ok) { sfx('good'); onSolved(ans.trim()); }
     else { sfx('bad'); vibrate(30); setTries((t) => t + 1); setWrong(true); setTimeout(() => setWrong(false), 500); }
   }
   return html`<div class="stack">
-    <input class="input" style=${`font-size:20px;height:56px;text-align:center;${wrong ? 'animation:shake .4s;border-color:var(--bad)' : ''}`} placeholder="정답을 입력하세요" value=${ans} onInput=${(e) => setAns(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && check()} />
+    <input class="input" style=${`font-size:20px;height:56px;text-align:center;${wrong ? 'animation:shake .4s;border-color:var(--bad)' : ''}`} placeholder="정답을 입력하세요" value=${ans} onInput=${(e) => setAns(e.target.value)} onKeyDown=${(e) => { if (e.isComposing || e.keyCode === 229) return; if (e.key === 'Enter') check(); }} />
     ${tries >= 1 && mission.hint && html`<div class="tip"><${Emo} name="Light bulb" size=${22} /><div><b>힌트</b> ${mission.hint}</div></div>`}
     ${tries >= 3 && html`<div class="small muted">정답 예시: ${mission.answers[0]} (다시 입력해 보세요!)</div>`}
     <button class="btn primary lg" onClick=${check}>정답 확인</button>
   </div>`;
 }
 
-function similarity(a, b) {
-  const wa = normalizeAnswer(a).length ? a.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean) : [];
-  const wb = b.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
-  if (!wb.length) return 0;
-  const set = new Set(wa);
-  return wb.filter((w) => set.has(w)).length / wb.length;
-}
-function SpeakBox({ mission, onDone }) {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const [heard, setHeard] = useState('');
-  const [listening, setListening] = useState(false);
-  const [score, setScore] = useState(null);
-  const target = mission.say.replace(/___/g, '');
-  function listen() {
-    try {
-      const r = new SR();
-      r.lang = 'en-US';
-      r.interimResults = false;
-      r.onresult = (e) => {
-        const t = e.results[0][0].transcript;
-        setHeard(t);
-        const s = similarity(t, target);
-        setScore(s);
-        if (s >= 0.6) sfx('good'); else sfx('bad');
-      };
-      r.onend = () => setListening(false);
-      r.onerror = () => setListening(false);
-      setListening(true);
-      r.start();
-    } catch (_) { setListening(false); }
-  }
+function SpeakBox({ kid, mission, busy, onDone, onRecorded }) {
+  const noWay = !SP.srUsable() && !SP.canRecord();
   return html`<div class="stack">
-    <div class="card flat" style="text-align:center;font-size:22px;font-weight:800;line-height:1.4">${mission.say}</div>
-    <div class="row wrap" style="justify-content:center">
-      <button class="btn" onClick=${() => speak(target)}><${Icon} name="volume-2" size=${18} />원어민 발음 듣기</button>
-      <button class="btn" onClick=${() => speak(target, 'en-US', 0.6)}><${Icon} name="headphones" size=${18} />천천히</button>
-      ${SR && html`<button class=${'btn ' + (listening ? 'danger' : 'primary')} onClick=${listen}><${Icon} name="mic" size=${18} />${listening ? '듣는 중…' : '말하고 채점받기'}</button>`}
-    </div>
-    ${heard && html`<div class="tip"><${Emo} name=${score >= 0.6 ? 'Hundred points' : 'Thinking face'} size=${22} /><div>들린 문장: <b>${heard}</b> · 정확도 ${Math.round(score * 100)}%</div></div>`}
-    ${SR ? html`<button class="btn primary lg" disabled=${!(score >= 0.6)} onClick=${() => onDone(heard)}>${score >= 0.6 ? '미션 완료!' : '60% 이상이면 완료할 수 있어요'}</button>`
-      : html`<button class="btn primary lg" onClick=${() => onDone('')}>3번 따라 말했어요!</button>`}
+    <${SpeakTrainer} target=${mission.say} grade=${kid.profile?.grade} allowRecord=${true} passLabel="미션 완료!" onPass=${({ heard, pct }) => !busy && onDone(`${heard} (${Math.round(pct * 100)}%)`)} onRecorded=${(r) => !busy && onRecorded(r)} />
+    ${noWay && html`<button class="btn primary lg" disabled=${busy} onClick=${() => onDone('따라 말하기 3번 (채점 불가 기기)')}>3번 따라 말했어요!</button>`}
   </div>`;
 }
 

@@ -135,12 +135,16 @@ function Quiz({ kid, lesson, session, run, onExit }) {
   const [retried, setRetried] = useState({});
   const [done, setDone] = useState(null);
   const isMock = !!session.mock;
+  // 마지막 문제 점수가 빠지지 않도록 최신 값은 ref로 보관 (setTimeout 안의 예전 값 문제)
+  const scoreRef = useRef(0);
+  const wrongRef = useRef([]);
 
   function answer(ok, q, given) {
     I.record(kid.id, lesson.id, q.wordId, q.type, ok);
     const isFirst = idx < firstTotal;
-    if (ok && isFirst) setScore((s) => s + 1);
+    if (ok && isFirst) { scoreRef.current += 1; setScore((s) => s + 1); }
     if (!ok) {
+      wrongRef.current = [...wrongRef.current, { ...q, given }];
       setWrong((l) => [...l, { ...q, given }]);
       // 실전 모의고사가 아니면 틀린 단어를 다른 문장으로 한 번 더
       if (!isMock && !retried[q.wordId + q.type]) {
@@ -155,18 +159,23 @@ function Quiz({ kid, lesson, session, run, onExit }) {
   }
   function finish() {
     const total = firstTotal;
+    const score = scoreRef.current;
+    const wrong = wrongRef.current;
     let talents = 0;
     const wrongList = wrong.filter((x) => !x.retry).map((x) => ({ wordId: x.wordId, type: x.type }));
+    const passDay = session.mock || score / Math.max(1, total) >= 0.6;
+    if (run.kind === 'day' && run.planDay.date <= todayKey(0) && !passDay) { I.saveAttempt(kid.id, lesson, run.planDay, score, total); setScore(score); setDone({ total, talents: 0, retryDay: true }); return; }
     if (run.kind === 'day' && run.planDay.date <= todayKey(0)) { const r = I.finishDay(kid.id, lesson, run.planDay, score, total); talents = r && r.talents ? r.talents : 0; if (session.mock) talents += I.finishMock(kid.id, lesson, score, total, wrongList); }
     else if (run.kind === 'day' && session.mock) talents = I.finishMock(kid.id, lesson, score, total, wrongList);
     else if (run.kind === 'mock') talents = I.finishMock(kid.id, lesson, score, total, wrong.filter((x) => !x.retry).map((x) => ({ wordId: x.wordId, type: x.type })));
     if (score / Math.max(1, total) >= 0.8) celebrate(score === total ? 2 : 1);
     if (talents) sfx('coin');
+    setScore(score);
     setDone({ total, talents });
   }
 
   if (!queue.length) return html`<${Empty} title="문제가 없어요" />`;
-  if (done) return html`<${Result} lesson=${lesson} score=${score} total=${done.total} talents=${done.talents} wrong=${wrong.filter((x) => !x.retry)} onExit=${onExit} mock=${isMock} />`;
+  if (done) return html`${done.retryDay && html`<div class="tip" style="background:var(--warn-soft);margin-bottom:10px"><b>정답률 60% 이상이면 오늘 학습이 완료돼요.</b> 틀린 단어를 보고 한 번 더 도전해요!</div>`}<${Result} lesson=${lesson} score=${score} total=${done.total} talents=${done.talents} wrong=${wrongRef.current.filter((x) => !x.retry)} onExit=${onExit} mock=${isMock} />`;
   const q = queue[idx];
   const section = isMock ? q.type : null;
   return html`<div class="stack" style="gap:12px">
@@ -203,7 +212,7 @@ function ChoiceQ({ q, lesson, mock, onAnswer, onNext, num }) {
     <div style="font-size:19px;font-weight:600;line-height:1.55"><span class="muted">${num}. </span><${Bold} text=${q.prompt} /></div>
     ${q.prompt2 && html`<div style="font-size:18px;margin-top:6px"><${Bold} text=${q.prompt2} /></div>`}
     <div class="stack" style="gap:8px;margin-top:16px">
-      ${q.options.map((o, i) => html`<button key=${o} class=${'choice ' + (picked == null || mock ? (picked === o ? 'right' : '') : o === q.answer ? 'right' : picked === o ? 'wrong' : '')} style="font-size:16px;font-weight:700" onClick=${() => choose(o)}><span class="k">${'ABCD'[i]}</span>${o}</button>`)}
+      ${q.options.map((o, i) => html`<button key=${i} class=${'choice ' + (picked == null || mock ? (picked === o ? 'right' : '') : o === q.answer ? 'right' : picked === o ? 'wrong' : '')} style="font-size:16px;font-weight:700" onClick=${() => choose(o)}><span class="k">${'ABCD'[i]}</span>${o}</button>`)}
     </div>
     ${picked != null && !ok && !mock && html`<${Explain} lesson=${lesson} q=${q} /><button class="btn primary block" style="margin-top:10px" onClick=${onNext}>다음 문제</button>`}
   </section>`;

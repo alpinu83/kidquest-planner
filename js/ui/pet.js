@@ -44,6 +44,8 @@ export function PetStage({ pet, stageOverride, mood = 'ok', interactive = false,
     }
   }, [fx && fx.key]);
 
+  const tapT = useRef(0);
+  useEffect(() => () => clearTimeout(tapT.current), []);
   function burstHearts(n = 3) {
     const now = Date.now();
     const list = Array.from({ length: n }, (_, i) => ({ id: now + i, x: 30 + Math.random() * 40, dx: (Math.random() - 0.5) * 80, d: i * 0.12, e: pick(['Red heart', 'Sparkling heart', 'Sparkles']) }));
@@ -62,8 +64,8 @@ export function PetStage({ pet, stageOverride, mood = 'ok', interactive = false,
         ? ['톡톡… 안에서 무언가 움직여요!', '따뜻하게 지켜 주세요', '먹이를 주면 빨리 부화해요!']
         : mood === 'hungry' ? ['배고파요… 간식 주세요!', '꼬르륵~', '미션 하고 달란트 모아 줘!'] : species.lines;
       setLine(pick(lines));
-      clearTimeout(onTap.t);
-      onTap.t = setTimeout(() => setLine(null), 2600);
+      clearTimeout(tapT.current);
+      tapT.current = setTimeout(() => setLine(null), 2600);
     }
   }
 

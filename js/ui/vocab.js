@@ -7,6 +7,8 @@ import * as I from '../ile.js';
 import { ILECard, ILERunner } from './ile.js';
 import * as SC from '../science.js';
 import { SciCard, SciRunner } from './science.js';
+import { SpeakTrainer } from './speak.js';
+import * as SP from '../speech.js';
 
 let POOL = null; // 게임 단어 범위 (학원 레슨 단어로 바꿀 수 있음)
 
@@ -32,13 +34,15 @@ export function VocabTab({ kid }) {
   if (mode === 'memory') return html`<${MemoryGame} kid=${kid} onExit=${() => setMode(null)} />`;
   if (mode === 'spell') return html`<${SpellingBee} kid=${kid} onExit=${() => setMode(null)} />`;
   if (mode === 'sentence') return html`<${SentenceGame} kid=${kid} onExit=${() => setMode(null)} />`;
+  if (mode === 'say') return html`<${SayGame} kid=${kid} onExit=${() => setMode(null)} />`;
   if (mode === 'book') return html`<${WordBook} kid=${kid} onExit=${() => setMode(null)} />`;
 
   const games = [
     { id: 'speed', name: '스피드 퀴즈', desc: '60초 동안 뜻 맞히기', e: 'Alarm clock' },
     { id: 'memory', name: '짝맞추기', desc: '영어 ↔ 한글 카드 뒤집기', e: 'Joystick' },
     { id: 'spell', name: '스펠링 비', desc: '듣고 철자 쓰기', e: 'Headphone' },
-    { id: 'sentence', name: '문장 퍼즐', desc: '단어를 순서대로 배열', e: 'Puzzle piece' }
+    { id: 'sentence', name: '문장 퍼즐', desc: '단어를 순서대로 배열', e: 'Puzzle piece' },
+    { id: 'say', name: '듣고 따라 말하기', desc: '원어민 발음 듣고 말하기 채점', e: 'Speaking head' }
   ];
   return html`<div class="grid fade-in">
     ${lesson && html`<${ILECard} kid=${kid} lesson=${lesson} onRun=${setIleRun} />`}
@@ -287,14 +291,14 @@ function practicePool(kid) {
   const lvl = M.wordsForLevel(kid.profile?.vocabLevel || 2);
   return learned.length >= 12 ? learned : [...learned, ...lvl];
 }
-function GameResult({ title, score, sub, onExit, onRetry, kid, gameName }) {
+function GameResult({ title, score, sub, onExit, onRetry, kid, gameName, earn = true, need = '' }) {
   const [t, setT] = useState(null);
-  useEffect(() => { const r = M.finishGame(kid.id, gameName, score); setT(r); if (r) { sfx('coin'); celebrate(1); } }, []);
+  useEffect(() => { if (!earn) { setT(-1); return; } const r = M.finishGame(kid.id, gameName, score); setT(r); if (r) { sfx('coin'); celebrate(1); } }, []);
   return html`<section class="card" style="text-align:center">
     <${Emo} name="Trophy" size=${90} />
     <h2 style="font-size:26px;font-weight:900;margin-top:8px">${title}</h2>
     <div class="muted">${sub}</div>
-    ${t > 0 ? html`<div class="pill-talent" style="margin:14px auto 0;width:max-content"><${Emo} name="Coin" size=${30} />+${t}</div>` : t === 0 && html`<div class="small muted" style="margin-top:10px">오늘 게임 달란트는 모두 받았어요. 연습은 계속 할 수 있어요!</div>`}
+    ${t > 0 ? html`<div class="pill-talent" style="margin:14px auto 0;width:max-content"><${Emo} name="Coin" size=${30} />+${t}</div>` : t === 0 ? html`<div class="small muted" style="margin-top:10px">오늘 게임 달란트는 모두 받았어요. 연습은 계속 할 수 있어요!</div>` : t === -1 && html`<div class="small muted" style="margin-top:10px">${need || '조금 더 맞히면'} 달란트를 받을 수 있어요. 한 판 더!</div>`}
     <div class="row" style="justify-content:center;margin-top:16px"><button class="btn" onClick=${onExit}>나가기</button><button class="btn primary" onClick=${onRetry}>한 판 더</button></div>
   </section>`;
 }
@@ -309,10 +313,11 @@ function SpeedQuizRound({ kid, onExit, onRetry }) {
   const [n, setN] = useState(0);
   const [score, setScore] = useState(0);
   const [picked, setPicked] = useState(null);
-  useEffect(() => { const t = setInterval(() => setLeft((l) => (l > 0 ? l - 1 : 0)), 1000); return () => clearInterval(t); }, []);
-  const w = pool[n % pool.length];
-  const opts = useMemo(() => shuffle([w, ...distractors(w, 'meaning')]), [n]);
-  if (left === 0) return html`<${GameShell} title="스피드 퀴즈" onExit=${onExit}><${GameResult} kid=${kid} gameName="스피드 퀴즈" title=${`${score}개 정답!`} score=${`${score}점`} sub="60초 동안 맞힌 개수" onExit=${onExit} onRetry=${onRetry} /><//>`;
+  useEffect(() => { const t = setInterval(() => setLeft((l) => { if (l <= 1) clearInterval(t); return Math.max(0, l - 1); }), 1000); return () => clearInterval(t); }, []);
+  const w = pool.length ? pool[n % pool.length] : null;
+  const opts = useMemo(() => (w ? shuffle([w, ...distractors(w, 'meaning')]) : []), [n]);
+  if (!w) return html`<${GameShell} title="스피드 퀴즈" onExit=${onExit}><${Empty} title="연습할 단어가 아직 없어요" sub="오늘의 단어 학습을 먼저 해 보세요" /><//>`;
+  if (left === 0) return html`<${GameShell} title="스피드 퀴즈" onExit=${onExit}><${GameResult} kid=${kid} gameName="스피드 퀴즈" earn=${score >= 5} need="5개 이상 맞히면" title=${`${score}개 정답!`} score=${`${score}점`} sub="60초 동안 맞힌 개수" onExit=${onExit} onRetry=${onRetry} /><//>`;
   function choose(o) {
     if (picked) return;
     setPicked(o.id);
@@ -356,6 +361,7 @@ function MemoryRound({ kid, onExit, onRetry }) {
       else setTimeout(() => setOpen([]), 900);
     }
   }
+  if (!cards.length) return html`<${GameShell} title="짝맞추기" onExit=${onExit}><${Empty} title="연습할 단어가 아직 없어요" sub="오늘의 단어 학습을 먼저 해 보세요" /><//>`;
   if (matched.length === cards.length / 2) {
     const secs = Math.round((Date.now() - start.current) / 1000);
     return html`<${GameShell} title="짝맞추기" onExit=${onExit}><${GameResult} kid=${kid} gameName="짝맞추기" title="모두 찾았어요!" score=${`${moves}번 만에`} sub=${`${moves}번 시도 · ${secs}초`} onExit=${onExit} onRetry=${onRetry} /><//>`;
@@ -370,7 +376,7 @@ function SpellingBee({ kid, onExit }) {
   const words = useMemo(() => shuffle(practicePool(kid)).filter((w) => !w.word.includes(' ')).slice(0, 8), [round]);
   const [i, setI] = useState(0);
   const [score, setScore] = useState(0);
-  if (i >= words.length) return html`<${GameShell} title="스펠링 비" onExit=${onExit}><${GameResult} kid=${kid} gameName="스펠링 비" title=${`${score} / ${words.length}`} score=${`${score}/${words.length}`} sub="철자 정답 수" onExit=${onExit} onRetry=${() => { setRound(round + 1); setI(0); setScore(0); }} /><//>`;
+  if (i >= words.length) return html`<${GameShell} title="스펠링 비" onExit=${onExit}><${GameResult} kid=${kid} gameName="스펠링 비" earn=${score >= Math.ceil(words.length / 2)} need="절반 이상 맞히면" title=${`${score} / ${words.length}`} score=${`${score}/${words.length}`} sub="철자 정답 수" onExit=${onExit} onRetry=${() => { setRound(round + 1); setI(0); setScore(0); }} /><//>`;
   return html`<${GameShell} title=${`스펠링 비 ${i + 1}/${words.length}`} onExit=${onExit} right=${html`<span class="badge good">${score}</span>`}>
     <${SpellQ} key=${round + '_' + i} w=${words[i]} onAnswer=${(ok) => { if (ok) setScore((s) => s + 1); setTimeout(() => setI(i + 1), ok ? 600 : 1500); }} />
   <//>`;
@@ -381,9 +387,31 @@ function SentenceGame({ kid, onExit }) {
   const words = useMemo(() => shuffle(practicePool(kid)).filter((w) => w.sentence && w.sentence.split(' ').length <= 9).slice(0, 5), [round]);
   const [i, setI] = useState(0);
   const [score, setScore] = useState(0);
-  if (i >= words.length) return html`<${GameShell} title="문장 퍼즐" onExit=${onExit}><${GameResult} kid=${kid} gameName="문장 퍼즐" title=${`${score} / ${words.length}`} score=${`${score}/${words.length}`} sub="완성한 문장 수" onExit=${onExit} onRetry=${() => { setRound(round + 1); setI(0); setScore(0); }} /><//>`;
+  if (i >= words.length) return html`<${GameShell} title="문장 퍼즐" onExit=${onExit}><${GameResult} kid=${kid} gameName="문장 퍼즐" earn=${score >= Math.ceil(words.length / 2)} need="절반 이상 완성하면" title=${`${score} / ${words.length}`} score=${`${score}/${words.length}`} sub="완성한 문장 수" onExit=${onExit} onRetry=${() => { setRound(round + 1); setI(0); setScore(0); }} /><//>`;
   return html`<${GameShell} title=${`문장 퍼즐 ${i + 1}/${words.length}`} onExit=${onExit} right=${html`<span class="badge good">${score}</span>`}>
     <${SentenceQ} key=${round + '_' + i} w=${words[i]} onAnswer=${(ok) => { if (ok) setScore((s) => s + 1); setTimeout(() => setI(i + 1), ok ? 900 : 1800); }} />
+  <//>`;
+}
+
+// 듣고 따라 말하기: 단어 3개 + 예문 3개, 통과 개수만큼 점수
+function SayGame({ kid, onExit }) {
+  const [round, setRound] = useState(0);
+  const items = useMemo(() => {
+    const pool = shuffle(practicePool(kid));
+    const ws = pool.filter((w) => !w.word.includes(' ')).slice(0, 3).map((w) => ({ k: w.id + 'w', text: w.word, ko: w.meaning }));
+    const ss = pool.filter((w) => w.sentence && w.sentence.split(' ').length <= (Number(kid.profile?.grade) <= 4 ? 8 : 12) && !ws.some((x) => x.k === w.id + 'w')).slice(0, 3).map((w) => ({ k: w.id + 's', text: w.sentence, ko: w.sentenceKo || w.meaning }));
+    return [...ws, ...ss];
+  }, [round]);
+  const [i, setI] = useState(0);
+  const [score, setScore] = useState(0);
+  if (!SP.srUsable()) return html`<${GameShell} title="듣고 따라 말하기" onExit=${onExit}><section class="card"><${Empty} emoji="Speaking head" title="이 기기에서는 말하기 채점이 안 돼요" sub="iPad 설정 → Safari(또는 KidQuest) → 마이크를 허용으로 바꾸고 앱을 다시 열어 주세요. 창의 미션의 영어 말하기는 녹음으로 제출할 수 있어요." /></section><//>`;
+  if (i >= items.length) return html`<${GameShell} title="듣고 따라 말하기" onExit=${onExit}><${GameResult} kid=${kid} gameName="따라 말하기" earn=${score >= 3} need="3개 이상 통과하면" title=${`${score} / ${items.length}`} score=${`${score}/${items.length}`} sub="통과한 문장 수" onExit=${onExit} onRetry=${() => { setRound(round + 1); setI(0); setScore(0); }} /><//>`;
+  const it = items[i];
+  return html`<${GameShell} title=${`듣고 따라 말하기 ${i + 1}/${items.length}`} onExit=${onExit} right=${html`<span class="badge good">${score}</span>`}>
+    <section class="card">
+      <div class="small muted" style="text-align:center;margin-bottom:8px">${it.ko}</div>
+      <${SpeakTrainer} key=${round + '_' + i} target=${it.text} grade=${kid.profile?.grade} compact=${true} passLabel="통과! 다음으로" onPass=${() => { setScore((s) => s + 1); setI(i + 1); }} onSkip=${() => setI(i + 1)} />
+    </section>
   <//>`;
 }
 
