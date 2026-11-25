@@ -2,7 +2,7 @@
 // - 앱 코드(HTML/JS/CSS): 네트워크 우선 → 업데이트가 바로 반영되고, 오프라인이면 캐시 사용
 // - 이미지·폰트·라이브러리: 캐시 우선 (빠른 로딩)
 // - Firebase 실시간 동기화 요청은 가로채지 않음
-const VERSION = 'kq-2.4.6';
+const VERSION = 'kq-2.5.0';
 const CORE = `${VERSION}-core`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -12,7 +12,7 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k)))));
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => !k.startsWith(VERSION + '-')).map((k) => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -62,6 +62,6 @@ self.addEventListener('notificationclick', (e) => {
     for (const c of list) {
       if (c.url.startsWith(self.registration.scope)) { c.postMessage({ type: 'kq-open', url }); return c.focus(); }
     }
-    return self.clients.openWindow(url);
+    return self.clients.openWindow(new URL(url, self.registration.scope).href);
   }));
 });
