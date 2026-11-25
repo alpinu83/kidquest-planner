@@ -140,7 +140,7 @@ def timer_sec(tm, now_ms):
         return 0
     s = max(0, int(tm.get("total") or 0))
     if tm.get("startedAt"):
-        s += max(0, int((now_ms - int(tm["startedAt"])) / 1000))
+        s += min(3 * 3600, max(0, int((now_ms - int(tm["startedAt"])) / 1000)))  # 앱과 같게 한 번에 최대 3시간
     return s
 
 
@@ -220,9 +220,13 @@ if FORCE == "homework" or (not FORCE and due(hw, "20:00", "hwLastSent", today, n
             parent_lines.append(f"{name(k)}: 숙제 다 했어요{studied}" + (f" (생활 할 일 {len(other_left)}개 남음)" if other_left else ""))
     if parent_lines:
         msgs.append({"members": PARENTS, "title": "오늘 숙제 모두 끝!" if all_done else "오늘 숙제 현황", "body": "\n".join(parent_lines), "url": "#/parent/overview", "tag": "kq-hw"})
-    send(msgs)
+    # 먼저 보낸 날짜를 기록해서 발송 중 오류가 나도 15분마다 같은 알림이 반복되지 않게
     if not FORCE and not DRY:
         put(f"{DB}/families/{FAMILY}/settings/push/hwLastSent.json", today)
+    try:
+        send(msgs)
+    except Exception as e:
+        print("homework push failed:", e)
 
 # ---------- 2) 일요일 주간 공부 리포트 ----------
 wk = push.get("weekly") or {}
