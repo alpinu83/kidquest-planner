@@ -8,7 +8,7 @@ import * as db from './store.js';
 import * as M from './model.js';
 import { getMe, setMe, isParentId, parentDeviceOk, rememberParentDevice, memberInfo, unreadCount, talkMsgs, PARENTS, syncPush } from './members.js';
 import { createSeed, KID_COLORS } from '../data/presets.js';
-import { E } from './util.js';
+import { E, unlockAudioOnce } from './util.js';
 import { APP_VERSION } from './config.js';
 
 function parseRoute() {
@@ -22,7 +22,8 @@ function parseRoute() {
 function go(path) {
   location.hash = path;
 }
-const parentUnlocked = () => sessionStorage.getItem('kq2_parent') === '1' || parentDeviceOk();
+// '부모 기기 기억'은 이 기기의 "나"가 부모일 때만 인정 (아이 iPad에서 PIN 없이 부모 관리로 들어가는 것 방지)
+const parentUnlocked = () => sessionStorage.getItem('kq2_parent') === '1' || (parentDeviceOk() && isParentId(getMe()));
 
 // 앱을 처음 열 때 이 기기의 "나"로 바로 들어가기 (전환 버튼으로 오면 선택 화면 유지)
 let booted = false;
@@ -141,18 +142,29 @@ function PinModal({ onClose, onOk }) {
   const [v, setV] = useState('');
   const [err, setErr] = useState(false);
   // 아이 기기(이 기기의 "나"가 아이)에서는 기본으로 기억하지 않음
-  const [remember, setRemember] = useState(!getMe() || isParentId(getMe()));
+  const [remember, setRemember] = useState(isParentId(getMe()));
   const pin = M.settings().pin || '1234';
+  const lockUntil = () => Number(sessionStorage.getItem('kq2_pin_lock') || 0);
+  const [, force] = useState(0);
+  useEffect(() => { const t = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(t); }, []);
+  const locked = lockUntil() > Date.now();
   function press(d) {
+    if (locked) return;
     const nv = (v + d).slice(0, 4);
     setV(nv);
     if (nv.length === 4) {
-      if (nv === pin) onOk(remember);
-      else { setErr(true); setTimeout(() => { setV(''); setErr(false); }, 500); }
+      if (nv === pin) { sessionStorage.removeItem('kq2_pin_fail'); onOk(remember); }
+      else {
+        // 5번 틀리면 1분 동안 잠금 (아이들이 번호를 하나씩 눌러 보는 것 방지)
+        const fails = Number(sessionStorage.getItem('kq2_pin_fail') || 0) + 1;
+        sessionStorage.setItem('kq2_pin_fail', String(fails));
+        if (fails >= 5) { sessionStorage.setItem('kq2_pin_lock', String(Date.now() + 60000)); sessionStorage.setItem('kq2_pin_fail', '0'); }
+        setErr(true); setTimeout(() => { setV(''); setErr(false); }, 500);
+      }
     }
   }
   return html`<${Modal} title="부모 확인" icon="Locked" onClose=${onClose}>
-    <div class="muted small" style="text-align:center">부모님 PIN 4자리를 입력하세요${pin === '1234' ? ' (초기값 1234)' : ''}</div>
+    <div class="muted small" style="text-align:center">${locked ? `여러 번 틀려서 잠겼어요 · ${Math.ceil((lockUntil() - Date.now()) / 1000)}초 뒤 다시` : '부모님 PIN 4자리를 입력하세요'}</div>
     <div class="pin-dots" style=${err ? 'animation:shake .4s' : ''}>${[0, 1, 2, 3].map((i) => html`<i class=${i < v.length ? 'on' : ''}></i>`)}</div>
     <div class="pin-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => html`<button onClick=${() => press(String(n))}>${n}</button>`)}<span></span><button onClick=${() => press('0')}>0</button><button onClick=${() => setV(v.slice(0, -1))}><${Icon} name="undo-2" /></button></div>
     <label class="row small" style="justify-content:center;margin-top:12px"><input type="checkbox" checked=${remember} onChange=${(e) => setRemember(e.target.checked)} />부모님 기기예요 · 다음부터 PIN 묻지 않기</label>
@@ -200,4 +212,5 @@ try {
   });
 } catch (_) {}
 db.connect();
+unlockAudioOnce();
 render(html`<${App} />`, document.getElementById('app'));

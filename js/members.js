@@ -42,7 +42,7 @@ export function memberInfo(id) {
     return { id, name: cfg.name || p.defName, emo, img: E(emo), color: p.color, soft: p.soft, parent: true };
   }
   const k = M.getKid(id);
-  if (!k) return { id, name: id, emo: 'Egg', img: E('Egg'), color: '#64748B', soft: '#F1F5F9' };
+  if (!k || !k.profile) return { id, name: id, emo: 'Egg', img: E('Egg'), color: '#64748B', soft: '#F1F5F9' };
   const pet = M.activePet(k);
   const c = KID_COLORS.find((x) => x.id === k.profile.colorId) || KID_COLORS[0];
   const emo = pet ? pet.species.forms[Math.min(pet.stage, pet.species.forms.length - 1)] : 'Egg';

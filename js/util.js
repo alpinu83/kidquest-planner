@@ -128,6 +128,7 @@ export function sfx(kind = 'tap') {
     if (localStorage.getItem('kq2_mute') === '1') return;
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     const ctx = audioCtx;
+    if (ctx.state !== 'running' && ctx.resume) ctx.resume().catch(() => {});
     const notes = {
       tap: [[660, 0.05]],
       good: [[660, 0.08], [880, 0.12]],
@@ -169,4 +170,14 @@ export function compressImage(file, maxSize = 640, quality = 0.7) {
     img.onerror = reject;
     img.src = url;
   });
+}
+
+// iPad(iOS)는 사용자가 화면을 한 번 터치해야 소리·음성이 나와요 → 첫 터치 때 미리 깨워 두기
+export function unlockAudioOnce() {
+  const go = () => {
+    try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u); } } catch (_) {}
+    try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {}); } catch (_) {}
+  };
+  window.addEventListener('pointerdown', go, { once: true, capture: true });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') window.addEventListener('pointerdown', go, { once: true, capture: true }); });
 }

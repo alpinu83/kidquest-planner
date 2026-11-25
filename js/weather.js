@@ -95,21 +95,12 @@ export async function fetchWeatherForecast(cityId = 'seoul', forceRefresh = fals
     } catch (_) {}
     return payload;
   } catch (err) {
-    // 오프라인/네트워크 제한 환경에서도 UI가 깨지지 않도록 안내용 예시 데이터 반환
-    const now = new Date();
-    const fmt = (offset) => {
-      const x = new Date(now);
-      x.setDate(x.getDate() + offset);
-      return x.toISOString().slice(0, 10);
-    };
-    return {
-      source: '오프라인 예시 데이터 (인터넷 연결 시 자동 갱신)',
-      isFallback: true,
-      cityName: city.name,
-      today: { date: fmt(0), weatherCode: 2, minTemp: 7, maxTemp: 16, precipProb: 15, precipSum: 0 },
-      tomorrow: { date: fmt(1), weatherCode: 61, minTemp: 6, maxTemp: 13, precipProb: 75, precipSum: 8.5 },
-      dayAfter: { date: fmt(2), weatherCode: 0, minTemp: 4, maxTemp: 15, precipProb: 5, precipSum: 0 }
-    };
+    // 오프라인이면 마지막으로 받은 실제 예보를 보여줌 (가짜 예시 날씨는 아이들이 헷갈려서 쓰지 않음)
+    try {
+      const st = JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY) || 'null');
+      if (st && st.cityId === city.id && st.data && Date.now() - st.fetchedAt < 36 * 3600 * 1000) return { ...st.data, source: '마지막 저장 예보 (오프라인)', isFallback: true };
+    } catch (_) {}
+    throw err;
   }
 }
 

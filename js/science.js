@@ -181,6 +181,9 @@ export function retry(t, q) {
 }
 
 // ---------- 완료 ----------
+export function saveAttempt(kidId, t, p, score, total) {
+  db.set(`kids/${kidId}/sci/${t.id}/days/${p.date}/tries/${Date.now()}`, { score, total });
+}
 export function finishDay(kidId, t, p, score, total) {
   db.set(`kids/${kidId}/sci/${t.id}/days/${p.date}`, { done: true, score, total, at: Date.now() });
   const kid = M.getKid(kidId);

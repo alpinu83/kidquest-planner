@@ -40,6 +40,7 @@ export function setFamily(code) {
 
 export function leaveFamily() {
   try { localStorage.removeItem(LS_FAMILY); } catch (_) {}
+  queue = [];
   if (es) es.close();
   family = null;
   state = {};
@@ -196,7 +197,14 @@ async function flush() {
         body: JSON.stringify(single ? queue[0].value : batch)
       });
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) { status = 'denied'; emit(); }
+        if (res.status === 401 || res.status === 403) { status = 'denied'; emit(); throw new Error('HTTP ' + res.status); }
+        // 잘못된 요청(400 등)은 다시 보내도 계속 실패하므로 버리고 다음 변경을 보냄 (큐 막힘 방지)
+        if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+          console.error('KidQuest: 전송 실패로 버린 변경', res.status, JSON.stringify(single ? queue[0] : batch).slice(0, 300));
+          queue.splice(0, count);
+          saveQueue();
+          continue;
+        }
         throw new Error('HTTP ' + res.status);
       }
       queue.splice(0, count);
@@ -223,23 +231,33 @@ export function connect() {
       loaded = true;
     }
     queue = JSON.parse(localStorage.getItem(queueKey(family)) || '[]');
+    // 앱이 갑자기 꺼져 캐시에 반영 못 한 로컬 변경도 화면에 바로 보이게
+    for (const op of queue) applyOp(op);
   } catch (_) {}
   emit();
   openStream();
   window.addEventListener('online', () => { openStream(); scheduleFlush(10); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      if (!es || es.readyState === 2) openStream();
+      // iPad 절전 후에는 연결이 '열림'으로 보여도 실제로 끊겨 있는 경우가 많아서 오래 조용했으면 다시 연결
+      if (!es || es.readyState === 2 || Date.now() - lastRemoteAt > 60000) reopenStream();
       scheduleFlush(10);
     }
   });
-  // 스트림이 조용히 끊긴 경우 대비 (iPad 절전 등)
+  // 스트림이 조용히 끊긴 경우 대비 (Firebase는 30초마다 keep-alive를 보냄)
   setInterval(() => {
-    if (document.visibilityState === 'visible' && (!es || es.readyState === 2)) openStream();
+    if (document.visibilityState !== 'visible') return;
+    if (!es || es.readyState === 2 || (lastRemoteAt && Date.now() - lastRemoteAt > 90000)) reopenStream();
   }, 15000);
 }
 
+function reopenStream() {
+  if (es) { try { es.close(); } catch (_) {} }
+  es = null;
+  openStream();
+}
 function openStream() {
+  if (!family) return;
   if (es && es.readyState !== 2) return;
   status = 'connecting';
   emit();
@@ -248,7 +266,7 @@ function openStream() {
   es.addEventListener('patch', (e) => onRemote(e, 'patch'));
   es.addEventListener('keep-alive', () => { lastRemoteAt = Date.now(); });
   es.addEventListener('cancel', () => { status = 'denied'; emit(); });
-  es.onopen = () => { status = 'online'; retryDelay = 1500; scheduleFlush(10); emit(); };
+  es.onopen = () => { lastRemoteAt = Date.now(); status = 'online'; retryDelay = 1500; scheduleFlush(10); emit(); };
   es.onerror = () => {
     status = navigator.onLine === false ? 'offline' : 'connecting';
     emit();

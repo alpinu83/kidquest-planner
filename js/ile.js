@@ -133,11 +133,11 @@ export function makeQuestion(lesson, w, type, variant = null, hard = false) {
     return { id, type, wordId: w.id, prompt: `Which sentence uses **${w.word}** correctly?`, instruction: 'Choose the sentence in which the word is used correctly.', options: shuffle(item.o), answer: item.o[0] };
   }
   if (type === 'def') {
-    const sense = w.senses[item.sense || 0] || w.senses[0];
+    const sense = w.senses[item.sense || 0] || w.senses[0] || { def: w.ko || '' };
     const near = hard && w.h.dd.length >= 3 ? shuffle(w.h.dd).slice(0, 3) : null;
     const others = near || shuffle(lesson.words.filter((x) => x.id !== w.id).flatMap((x) => x.senses.map((s) => s.def))).slice(0, 3);
     const cap = w.word.charAt(0).toUpperCase() + w.word.slice(1);
-    return { id, type, wordId: w.id, prompt: item.s, prompt2: `**${cap}** means ______.`, instruction: 'Choose the best answer to complete each sentence.', options: shuffle([sense.def, ...others]), answer: sense.def };
+    return { id, type, wordId: w.id, prompt: item.s, prompt2: `**${cap}** means ______.`, instruction: 'Choose the best answer to complete each sentence.', options: shuffle([...new Set([sense.def, ...others])]), answer: sense.def };
   }
   if (type === 'fill') {
     return { id, type, wordId: w.id, prompt: item.s, instruction: hard ? 'Fill in the blank. You may need to change the word form (noun, adverb, tense, plural).' : 'Fill in the blank with the correct word. Pay attention to spelling and grammar.', answer: item.a };
@@ -261,6 +261,10 @@ function levenshtein(a, b) {
   return dp[a.length][b.length];
 }
 
+// 60% 미만: 시도 기록만 남기고 완료는 아님
+export function saveAttempt(kidId, lesson, planDay, score, total) {
+  db.set(`kids/${kidId}/ile/${lesson.id}/days/${planDay.date}/tries/${Date.now()}`, { score, total });
+}
 // 계획된 하루 학습 완료 → 해당 날짜 숙제 자동 체크 (달란트 지급)
 export function finishDay(kidId, lesson, planDay, score, total) {
   db.set(`kids/${kidId}/ile/${lesson.id}/days/${planDay.date}`, { done: true, score, total, at: Date.now() });
@@ -291,5 +295,5 @@ export function mocksOf(kid, lesson) {
 
 // 게임(스피드 퀴즈·짝맞추기·스펠링 비·문장 퍼즐)용 단어 목록
 export function gamePool(lesson) {
-  return lesson.words.map((w) => ({ id: `ile_${w.id}`, word: w.word, meaning: w.ko, pos: w.senses[0].pos, sentence: w.ex, sentenceKo: w.exKo, level: 99 }));
+  return lesson.words.map((w) => ({ id: `ile_${w.id}`, word: w.word, meaning: w.ko, pos: (w.senses[0] || {}).pos || '', sentence: w.ex, sentenceKo: w.exKo, level: 99 }));
 }

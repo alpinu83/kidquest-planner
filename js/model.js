@@ -62,6 +62,7 @@ export function petMood(pet) {
 
 export function feedPet(kidId, foodId) {
   const kid = getKid(kidId);
+  if (!kid) return { ok: false, msg: '먹이를 찾을 수 없어요.' };
   const pet = activePet(kid);
   const food = FOODS.find((f) => f.id === foodId);
   if (!kid || !pet || !food) return { ok: false, msg: '먹이를 찾을 수 없어요.' };
@@ -229,25 +230,26 @@ export function toggleTask(kidId, date, task, extra = null) {
     };
     db.multi(updates);
     // 오늘 모두 완료 보너스
-    const after = tasksFor(getKid(kidId), date);
+    const after = tasksFor(getKid(kidId), date, true);
     const counted = after.filter((t) => t.done || !(t.dueDate && t.dueDate > date));
     const allDone = counted.length > 0 && counted.every((t) => t.done);
     const acId = `allclear_${date.replace(/-/g, '')}`;
-    if (allDone && !(getKid(kidId).ledger || {})[acId]) {
+    if (allDone && date >= todayKey(-1) && !(getKid(kidId).ledger || {})[acId]) {
       db.set(`kids/${kidId}/ledger/${acId}`, { id: acId, ts: Date.now(), date, kind: 'bonus', talents: REWARDS.allClear, reason: '오늘 할 일 모두 완료 보너스' });
       return { done: true, talents: reward, allClear: true, studySec: tm ? timerElapsed(tm) : 0 };
     }
     return { done: true, talents: reward, studySec: tm ? timerElapsed(tm) : 0 };
   }
   const entry = (kid.ledger || {})[ledgerId];
-  if (entry && talentBalance(kid) < entry.talents) {
+  const acId = `allclear_${date.replace(/-/g, '')}`;
+  const acEntry = (kid.ledger || {})[acId];
+  if ((entry || acEntry) && talentBalance(kid) < (entry?.talents || 0) + (acEntry?.talents || 0)) {
     return { done: true, blocked: true, msg: '이미 달란트를 사용해서 완료를 취소할 수 없어요.' };
   }
-  const acId = `allclear_${date.replace(/-/g, '')}`;
   const updates = { [`kids/${kidId}/ledger/${ledgerId}`]: null };
   if (task.source === 'workbook' || task.source === 'habit') updates[path] = null;
   else { updates[`${path}/done`] = false; updates[`${path}/doneAt`] = null; }
-  if ((kid.ledger || {})[acId] && talentBalance(kid) - (entry?.talents || 0) >= REWARDS.allClear) updates[`kids/${kidId}/ledger/${acId}`] = null;
+  if (acEntry) updates[`kids/${kidId}/ledger/${acId}`] = null;
   db.multi(updates);
   return { done: false };
 }
@@ -258,7 +260,7 @@ export function saveRecord(kidId, date, taskId, rec) {
 
 export function addTask(kidId, date, { title, subject = '숙제', talents = REWARDS.homework, note = '' }) {
   const id = uid('t');
-  db.set(`kids/${kidId}/tasks/${date}/${id}`, { id, title, subject, talents: Number(talents) || 1, note, source: 'manual', done: false, createdAt: Date.now(), order: 3 });
+  db.set(`kids/${kidId}/tasks/${date}/${id}`, { id, title, subject, talents: talents === '' || talents == null ? REWARDS.homework : Math.max(0, Number(talents) || 0), note, source: 'manual', done: false, createdAt: Date.now(), order: 3 });
   return id;
 }
 export function deleteTask(kidId, date, task) {
@@ -376,6 +378,11 @@ export function buildDailySession(kid) {
   let pool = shuffle(all.filter((w) => Number(w.level) === Number(level) && !states[w.id]));
   if (pool.length < newCount) pool = pool.concat(shuffle(all.filter((w) => Number(w.level) === Number(level) + 1 && !states[w.id])));
   const fresh = pool.slice(0, newCount);
+  // 레벨 단어를 다 익혀서 새 단어·복습이 없으면 가장 약한 단어로 복습 (오늘의 단어를 계속 할 수 있게)
+  if (!fresh.length && !due.length) {
+    const fallback = Object.entries(states).sort((a, b) => (a[1].b || 0) - (b[1].b || 0) || (b[1].w || 0) - (a[1].w || 0)).slice(0, 10).map(([id]) => byId.get(id)).filter(Boolean);
+    return { fresh, due: fallback };
+  }
   return { fresh, due };
 }
 export function recordWord(kidId, wordId, correct) {
@@ -431,7 +438,7 @@ export function grantTalents(kidId, talents, reason, alsoPet = false) {
   const entry = { id, ts: Date.now(), date: todayKey(0), kind: talents >= 0 ? 'bonus' : 'penalty', talents: Number(talents), reason, by: 'parent' };
   if (alsoPet && talents < 0) {
     const pet = activePet(kid);
-    if (pet) { entry.petId = pet.id; entry.petXp = Number(talents) * 90; }
+    if (pet) { entry.petId = pet.id; entry.petXp = -Math.min(Math.abs(Number(talents)) * 90, petXp(kid, pet.id)); }
   }
   db.set(`kids/${kidId}/ledger/${id}`, entry);
 }
@@ -441,7 +448,7 @@ export function weekSummary(kid, days = 7) {
   const out = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = todayKey(-i);
-    const list = tasksFor(kid, d);
+    const list = tasksFor(kid, d, true);
     out.push({
       date: d,
       total: list.length,
@@ -460,12 +467,14 @@ export function isStudyTask(t) {
   if (t && t.noTimer) return false;
   return !!t && (t.source === 'workbook' || STUDY_SUBJ.includes(t.subject) || STUDY_WORDS.test(String(t.title || '')));
 }
+export const MIN_STUDY_SEC = 120; // 공부 타이머 최소 2분 (1초만 켜고 체크하는 것 방지)
 export function timerOf(kid, date, taskId) {
   return (((kid && kid.timers) || {})[date] || {})[taskId] || null;
 }
 export function timerElapsed(tm, now = Date.now()) {
   if (!tm) return 0;
-  return Math.max(0, Number(tm.total) || 0) + (tm.startedAt ? Math.max(0, Math.floor((now - tm.startedAt) / 1000)) : 0);
+  // 켜 두고 잊은 타이머가 몇 시간씩 쌓이지 않도록 한 번에 최대 3시간까지만 인정
+  return Math.max(0, Number(tm.total) || 0) + (tm.startedAt ? Math.min(3 * 3600, Math.max(0, Math.floor((now - tm.startedAt) / 1000))) : 0);
 }
 export function runningTimer(kid) {
   for (const [date, day] of Object.entries((kid && kid.timers) || {})) {
@@ -480,6 +489,7 @@ export function startTimer(kidId, date, task) {
   const kid = getKid(kidId);
   const upd = {};
   const run = runningTimer(kid);
+  if (run && run.date === date && run.id === task.id) return { paused: null };
   let paused = null;
   if (run && !(run.date === date && run.id === task.id)) { Object.assign(upd, stopUpdates(kidId, run.date, run.id, run.tm)); paused = run.tm.title || null; }
   const cur = timerOf(kid, date, task.id) || {};
