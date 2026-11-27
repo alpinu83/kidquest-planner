@@ -4,6 +4,7 @@ import { todayKey, addDays, dowOf, uid, vals, sum, seededRandom, shuffle, daysBe
 import { MAX_PET_XP, stageForXp, speciesById } from '../data/pets.js';
 import { FOODS, FAV_BONUS, REWARDS } from '../data/shop.js';
 import { CREATIVE } from '../data/missions.js';
+import { BIBLE_VERSES } from '../data/bible.js';
 import { VOCAB_WORDS } from '../data/vocab.js';
 import { VOCAB_EXTRA } from '../data/vocab-extra.js';
 
@@ -438,7 +439,7 @@ export function grantTalents(kidId, talents, reason, alsoPet = false) {
   const entry = { id, ts: Date.now(), date: todayKey(0), kind: talents >= 0 ? 'bonus' : 'penalty', talents: Number(talents), reason, by: 'parent' };
   if (alsoPet && talents < 0) {
     const pet = activePet(kid);
-    if (pet) { entry.petId = pet.id; entry.petXp = -Math.min(Math.abs(Number(talents)) * 90, petXp(kid, pet.id)); }
+    if (pet) { entry.petId = pet.id; entry.petXp = -Math.min(Math.abs(Number(talents)) * 72, petXp(kid, pet.id)); }
   }
   db.set(`kids/${kidId}/ledger/${id}`, entry);
 }
@@ -589,4 +590,32 @@ export function studyReport(kid, monday) {
     missed,
     books
   };
+}
+
+// ---------- 말씀 미션 (짧은 성경 구절 읽고 암송) ----------
+// 저장: kids/{아이}/bible/{날짜} = { vid, ref, at, mistakes }
+export function versePool(kid) {
+  const grade = kid?.profile?.grade || 3;
+  return BIBLE_VERSES.filter((v) => (v.lv || 1) <= (grade >= 5 ? 2 : 1));
+}
+export function verseFor(kid, date) {
+  const saved = ((kid.bible || {})[date]) || null;
+  if (saved && saved.vid) { const v = BIBLE_VERSES.find((x) => x.id === saved.vid); if (v) return v; }
+  const pool = shuffle(versePool(kid), seededRandom('bible|' + kid.id));
+  const n = daysBetween('2026-01-01', date);
+  return pool[((n % pool.length) + pool.length) % pool.length];
+}
+export function verseDone(kid, date) {
+  const r = ((kid.bible || {})[date]) || null;
+  return r && r.at ? r : null;
+}
+export function completeVerse(kidId, date, verse, mistakes = 0) {
+  const kid = getKid(kidId);
+  if (verseDone(kid, date)) return 0;
+  const id = `bv_${date.replace(/-/g, '')}`;
+  db.multi({
+    [`kids/${kidId}/bible/${date}`]: { vid: verse.id, ref: verse.ref, at: Date.now(), mistakes: Number(mistakes) || 0 },
+    ...earn(kid, date, id, REWARDS.bible, `[말씀] ${verse.ref} 암송`)
+  });
+  return REWARDS.bible;
 }
