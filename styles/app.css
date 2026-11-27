@@ -773,3 +773,4 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .bv-steps span.ok { background: var(--good-soft); color: var(--good); }
 .bv-modal .bv-text { font-size: 18px; padding: 12px 14px; }
 .bv-modal .bv-text.en { font-size: 15px; }
+.bv-copy { font-size: 10.5px; color: var(--muted); text-align: center; margin-top: -4px; }
