@@ -287,9 +287,23 @@ export function creativePicks(kid, date) {
   const pool = CREATIVE.filter((c) => grade >= c.g[0] && grade <= c.g[1] && (!c.days || c.days.includes(dow)));
   const rnd = seededRandom(`${kid.id}|${date}|${day.seed || 0}`);
   const cats = shuffle([...new Set(pool.map((c) => c.cat))], rnd);
+  // 반복 줄이기: 이미 한 미션과 최근 3주 안에 나왔던 미션은 그 분야에 남은 게 있으면 빼고 고름
+  const doneEver = new Set(), recent = new Set();
+  const since = addDays(date, -21);
+  for (const [d, rec] of Object.entries(kid.creative || {})) {
+    if (!rec || d >= date) continue;
+    for (const id of Object.keys(rec.done || {})) doneEver.add(id);
+    if (d >= since) for (const id of rec.picks || []) recent.add(id);
+  }
+  // 아직 안 해 본 미션이 남은 분야를 먼저 고름
+  const fresh = (cat) => pool.some((c) => c.cat === cat && !doneEver.has(c.id) && !recent.has(c.id));
+  cats.sort((a, b) => fresh(b) - fresh(a));
   const picks = [];
   for (const cat of cats) {
-    const opts = pool.filter((c) => c.cat === cat);
+    const all = pool.filter((c) => c.cat === cat);
+    let opts = all.filter((c) => !doneEver.has(c.id) && !recent.has(c.id));
+    if (!opts.length) opts = all.filter((c) => !recent.has(c.id));
+    if (!opts.length) opts = all;
     picks.push(opts[Math.floor(rnd() * opts.length)]);
     if (picks.length === 3) break;
   }
@@ -602,8 +616,12 @@ export function verseFor(kid, date) {
   const saved = ((kid.bible || {})[date]) || null;
   if (saved && saved.vid) { const v = BIBLE_VERSES.find((x) => x.id === saved.vid); if (v) return v; }
   const pool = shuffle(versePool(kid), seededRandom('bible|' + kid.id));
+  // 그 날 이전에 외운 구절은 빼고 고름 → 남은 구절을 다 외울 때까지 같은 구절이 다시 나오지 않음
+  const learned = new Set(Object.entries(kid.bible || {}).filter(([d, r]) => d < date && r && r.at && r.vid).map(([, r]) => r.vid));
+  let left = pool.filter((v) => !learned.has(v.id));
+  if (!left.length) left = pool; // 다 외웠으면 처음부터 다시 (복습)
   const n = daysBetween('2026-01-01', date);
-  return pool[((n % pool.length) + pool.length) % pool.length];
+  return left[((n % left.length) + left.length) % left.length];
 }
 export function verseDone(kid, date) {
   const r = ((kid.bible || {})[date]) || null;
