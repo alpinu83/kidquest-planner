@@ -3,9 +3,8 @@ name: Daily Tomorrow Weather & Outfit Alert
 # 앱 설정(부모 관리 → 설정 → 내일 날씨 푸시 알림)의 시간에 맞춰 하루 한 번 보냅니다. 기본 21:00.
 # 15분마다 확인하므로 실제 도착은 설정 시각부터 15~20분 정도 늦을 수 있어요.
 on:
-  schedule:
-    # KST 17:00~23:45 (UTC 08:00~14:45) 동안 15분마다 확인
-    - cron: '*/15 8-14 * * *'
+  # 2026-11-27: 예약 실행은 Cloudflare 발송기(kidquest-push) 크론으로 옮김 (GitHub 예약 실행이 몇 시간씩 밀려서 알림이 안 나갔음)
+  # 여기는 수동 실행(테스트용)만 남김
   workflow_dispatch:
     inputs:
       force:
