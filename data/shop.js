@@ -21,6 +21,7 @@ export const REWARDS = {
   homework: 2,       // 부모가 추가한 숙제 기본값
   habit: 1,          // 생활 습관
   creative: 3,       // 창의 미션
+  bible: 3,          // 말씀 미션 (성경 구절 읽고 암송)
   vocabDaily: 3,     // 오늘의 단어 학습 완료
   vocabPerfect: 1,   // 만점 보너스
   game: 1,           // 단어 게임 1판 (하루 최대 gameDailyCap)
