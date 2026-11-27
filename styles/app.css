@@ -739,3 +739,25 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .task.cmp > .tmr { margin-left: 54px; }
 .task.cmp > .tmr + * { margin-left: auto; }
 .task-title { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* 말씀 미션 */
+.mis-right { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.mis-right > .card.fill { flex: 1; min-height: 0; }
+.bv-card { padding: 10px; flex: none; }
+.bv-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 8px; border-radius: 16px; background: linear-gradient(135deg, #FFFBEB, #FEF3C7); border: 1px solid #FDE68A; }
+.bv-row.done { background: var(--good-soft); border-color: transparent; }
+.bv-row:active { transform: scale(.98); }
+.bv-cat { font-size: 12px; font-weight: 800; color: #B45309; }
+.bv-ref { font-size: 15px; font-weight: 800; color: var(--text); }
+.bv-pre { font-size: 12.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bv-text { font-size: 20px; line-height: 1.65; font-weight: 700; padding: 16px 18px; border-radius: 18px; background: #FFFBEB; border: 1px solid #FDE68A; color: #422006; word-break: keep-all; }
+.bv-dots { display: flex; gap: 8px; justify-content: center; }
+.bv-dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); }
+.bv-dots i.on { background: #F59E0B; border-color: #F59E0B; }
+.bv-built { min-height: 64px; padding: 12px 14px; border-radius: 16px; background: #FFFBEB; border: 1px dashed #FCD34D; font-size: 18px; font-weight: 700; line-height: 1.6; display: flex; flex-wrap: wrap; gap: 4px 6px; word-break: keep-all; }
+.bv-blank { color: var(--muted); font-size: 13px; font-weight: 600; align-self: center; }
+.bv-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.bv-chip { padding: 9px 13px; border-radius: 12px; background: var(--surface); border: 1.5px solid var(--line); font-size: 16px; font-weight: 700; box-shadow: var(--shadow-sm); }
+.bv-chip:active { transform: scale(.95); }
+.bv-chip.bad { animation: shake .4s; border-color: var(--bad, #EF4444); color: var(--bad, #EF4444); }
+.bv-chip.hint { border-color: #F59E0B; background: #FEF3C7; }
