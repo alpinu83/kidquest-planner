@@ -1,6 +1,7 @@
 import { html, useState, useEffect, useRef, Icon, Emo, Ring, Bar, Modal, toast, celebrate, TalentPill, SyncBadge, Empty, Seg, usePhone } from './core.js';
 import { PetStage, EvolutionOverlay, EvolutionLine, MoodBadge, petDisplayName } from './pet.js';
 import { TaskList, DateNav, CreativeCards, MissionModal } from './missions.js';
+import { VerseCard, VerseModal } from './bible.js';
 import { VocabTab } from './vocab.js';
 import { TalkView, Avatar } from './talk.js';
 import { PetWorld, worldUsage } from './world.js';
@@ -205,6 +206,7 @@ function MissionsTab({ kid }) {
   const [date, setDate] = useState(todayKey(0));
   const [mission, setMission] = useState(null);
   const [panel, setPanel] = useState('tasks');
+  const [verseOpen, setVerseOpen] = useState(false);
   const picks = M.creativePicks(kid, date);
   const day = (kid.creative || {})[date] || {};
   const allDone = picks.every((m) => M.creativeDone(kid, date, m.id));
@@ -219,11 +221,13 @@ function MissionsTab({ kid }) {
       ${isToday && !allDone && (day.rerolls || 0) < 1 && html`<button class="btn sm" onClick=${() => { M.rerollCreative(kid.id, date); toast('새로운 미션이 도착했어요!', 'Wrapped gift'); }}><${Icon} name="shuffle" size=${16} />바꾸기</button>`}</div>
     <div class="card-body"><${CreativeCards} kid=${kid} date=${date} small=${true} onOpen=${setMission} /></div>
   </section>`;
+  const verseCard = html`<${VerseCard} kid=${kid} date=${date} onOpen=${() => setVerseOpen(true)} />`;
   return html`<div class="fit fade-in" style="display:flex;flex-direction:column;gap:12px">
     <div class="row between wrap"><${DateNav} date=${date} setDate=${setDate} />
-      ${phone && html`<${Seg} items=${[{ id: 'tasks', label: `숙제 ${tasks.filter((t) => t.done).length}/${tasks.length}` }, { id: 'creative', label: '창의 미션' }]} value=${panel} onChange=${setPanel} />`}</div>
-    ${phone ? html`<div class="panel">${panel === 'tasks' ? tasksCard : creativeCard}</div>`
-      : html`<div class="grid g-2 fill-row">${tasksCard}${creativeCard}</div>`}
+      ${phone && html`<${Seg} items=${[{ id: 'tasks', label: `숙제 ${tasks.filter((t) => t.done).length}/${tasks.length}` }, { id: 'creative', label: '창의' }, { id: 'verse', label: M.verseDone(kid, date) ? '말씀 ✓' : '말씀' }]} value=${panel} onChange=${setPanel} />`}</div>
+    ${phone ? html`<div class="panel">${panel === 'tasks' ? tasksCard : panel === 'creative' ? creativeCard : verseCard}</div>`
+      : html`<div class="grid g-2 fill-row">${tasksCard}<div class="mis-right">${creativeCard}${verseCard}</div></div>`}
+    ${verseOpen && html`<${VerseModal} kid=${kid} date=${date} onClose=${() => setVerseOpen(false)} />`}
     ${mission && html`<${MissionModal} kid=${kid} date=${date} mission=${mission} onClose=${() => setMission(null)} />`}
   </div>`;
 }
