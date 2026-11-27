@@ -14,8 +14,9 @@ export function VerseCard({ kid, date, onOpen }) {
       <img src=${'./assets/emoji/open_book.png'} alt="" width="44" height="44" />
       <div class="grow" style="min-width:0">
         <div class="bv-cat">말씀 미션 · 읽고 외우기</div>
-        <div class="bv-ref">${v.ref}</div>
+        <div class="bv-ref">${v.ref} <span class="bv-refen">${v.refEn}</span></div>
         <div class="bv-pre">${v.text}</div>
+        <div class="bv-pre en">${v.en}</div>
       </div>
       ${done ? html`<span class="badge good"><${Icon} name="check" size=${14} />암송</span>` : html`<${Reward} n=${3} />`}
     </button>
@@ -25,7 +26,8 @@ export function VerseCard({ kid, date, onOpen }) {
 export function VerseModal({ kid, date, onClose }) {
   const v = M.verseFor(kid, date);
   const done = M.verseDone(kid, date);
-  const words = v.text.split(/\s+/);
+  const [lang, setLang] = useState('ko');
+  const words = (lang === 'en' ? v.en : v.text).split(/\s+/);
   const isToday = date === todayKey(0);
   const [step, setStep] = useState(done ? 'done' : 'read');
   const [reads, setReads] = useState(0);
@@ -35,7 +37,7 @@ export function VerseModal({ kid, date, onClose }) {
   const [bad, setBad] = useState(null);
   const [hint, setHint] = useState(null);
   const [mistakes, setMistakes] = useState(0);
-  const minGap = Math.max(2500, words.length * 280);
+  const minGap = Math.max(3000, (v.text.split(/\s+/).length + v.en.split(/\s+/).length) * 250);
 
   function readOnce() {
     const now = Date.now();
@@ -44,8 +46,10 @@ export function VerseModal({ kid, date, onClose }) {
     sfx('tap');
     setReads(Math.min(READS, reads + 1));
   }
-  function startRecall() {
-    setChips(shuffle(words.map((w, i) => ({ id: i, w }))));
+  function startRecall(lg = 'ko') {
+    setLang(lg);
+    const ws = (lg === 'en' ? v.en : v.text).split(/\s+/);
+    setChips(shuffle(ws.map((w, i) => ({ id: i, w }))));
     setPlaced([]);
     setHint(null);
     setStep('recall');
@@ -58,7 +62,10 @@ export function VerseModal({ kid, date, onClose }) {
       setPlaced(nextPlaced);
       setChips(chips.filter((x) => x.id !== c.id));
       setHint(null);
-      if (nextPlaced.length === words.length) finish();
+      if (nextPlaced.length === words.length) {
+        if (lang === 'ko') { sfx('good'); toast('한글 암송 성공! 이제 영어로 외워 볼까요?', 'Glowing star'); setTimeout(() => startRecall('en'), 700); }
+        else finish();
+      }
     } else {
       setMistakes(mistakes + 1);
       setBad(c.id);
@@ -83,26 +90,29 @@ export function VerseModal({ kid, date, onClose }) {
 
   return html`<${Modal} title="말씀 미션" icon="Open book" onClose=${onClose}>
     <div class="stack bv-modal">
-      <div class="row wrap"><span class="badge" style="background:#FEF3C71A;color:#B45309;background:#FEF3C7">${v.ref}</span><${Reward} n=${3} /><span class="tiny muted">개역한글</span></div>
+      <div class="row wrap"><span class="badge" style="background:#FEF3C71A;color:#B45309;background:#FEF3C7">${v.ref}</span><${Reward} n=${3} /><span class="tiny muted">개역한글 · KJV</span></div>
 
       ${step === 'read' && html`
         <div class="bv-text">${v.text}</div>
+        <div class="bv-text en"><div class="bv-reflab">${v.refEn} · KJV</div>${v.en}</div>
         <div class="tip small"><${Emo} name="Light bulb" size=${22} /><div>${v.m}</div></div>
         <div class="row wrap" style="gap:8px">
-          <button class="btn" onClick=${() => { if (!speak(v.text, 'ko-KR', 0.85)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />듣기</button>
-          <button class="btn primary grow" disabled=${reads >= READS} onClick=${readOnce}><${Icon} name="book-open" size=${18} />소리 내어 읽었어요 (${reads}/${READS})</button>
+          <button class="btn" onClick=${() => { if (!speak(v.text, 'ko-KR', 0.85)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />한글</button>
+          <button class="btn" onClick=${() => { if (!speak(v.en, 'en-US', 0.8)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />English</button>
+          <button class="btn primary grow" disabled=${reads >= READS} onClick=${readOnce}><${Icon} name="book-open" size=${18} />한글·영어 소리 내어 읽었어요 (${reads}/${READS})</button>
         </div>
         <div class="bv-dots">${Array.from({ length: READS }, (_, i) => html`<i class=${i < reads ? 'on' : ''}></i>`)}</div>
-        ${isToday ? html`<button class="btn block" disabled=${reads < READS} onClick=${startRecall}><${Icon} name="sparkles" size=${18} />${reads < READS ? `${READS}번 읽으면 외우기 시작` : '이제 안 보고 외워 볼까요?'}</button>`
+        ${isToday ? html`<button class="btn block" disabled=${reads < READS} onClick=${() => startRecall(placed.length && lang === 'en' ? 'en' : 'ko')}><${Icon} name="sparkles" size=${18} />${reads < READS ? `${READS}번 읽으면 외우기 시작` : '이제 안 보고 외워 볼까요? (한글 → 영어)'}</button>`
           : html`<div class="tiny muted">달란트는 그날 하루 안에만 받을 수 있어요. 읽고 외우기 연습은 언제든 해도 좋아요.</div>`}
       `}
 
       ${step === 'recall' && html`
-        <div class="small muted">말씀을 떠올리며 단어 카드를 <b>순서대로</b> 눌러 보세요.</div>
-        <div class="bv-built">${placed.map((c) => html`<span key=${c.id}>${c.w}</span>`)}${placed.length < words.length && html`<span class="bv-blank">${words.length - placed.length}개 남음</span>`}</div>
+        <div class="bv-steps"><span class=${lang === 'ko' ? 'on' : 'ok'}>1 한글</span><span class=${lang === 'en' ? 'on' : ''}>2 English</span></div>
+        <div class="small muted">${lang === 'ko' ? '말씀을 떠올리며 단어 카드를 순서대로 눌러 보세요.' : 'Tap the English words in order.'}</div>
+        <div class=${'bv-built' + (lang === 'en' ? ' en' : '')}>${placed.map((c) => html`<span key=${c.id}>${c.w}</span>`)}${placed.length < words.length && html`<span class="bv-blank">${words.length - placed.length}개 남음</span>`}</div>
         <div class="bv-chips">${chips.map((c) => html`<button key=${c.id} class=${'bv-chip' + (bad === c.id ? ' bad' : '') + (hint === c.id ? ' hint' : '')} onClick=${() => tapChip(c)}>${c.w}</button>`)}</div>
         <div class="row between wrap">
-          <button class="btn sm" onClick=${() => { setStep('read'); }}><${Icon} name="eye" size=${16} />다시 보기</button>
+          <button class="btn sm" onClick=${() => { setStep('read'); setPlaced([]); }}><${Icon} name="eye" size=${16} />다시 보기</button>
           <span class="tiny muted">틀린 횟수 ${mistakes}</span>
           <button class="btn sm" onClick=${showHint}><${Icon} name="lightbulb" size=${16} />힌트</button>
         </div>
@@ -110,11 +120,12 @@ export function VerseModal({ kid, date, onClose }) {
 
       ${step === 'done' && html`
         <div class="bv-text">${v.text}</div>
+        <div class="bv-text en"><div class="bv-reflab">${v.refEn} · KJV</div>${v.en}</div>
         <div class="tip small" style="background:var(--good-soft)"><${Emo} name="Glowing star" size=${24} /><div>
           ${done ? html`<b>${hhmm(done.at)}</b>에 암송했어요${done.mistakes ? ` · 틀린 횟수 ${done.mistakes}` : ' · 한 번도 안 틀렸어요!'}` : html`<b>잘 외웠어요!</b> ${mistakes ? `틀린 횟수 ${mistakes}` : '한 번도 안 틀렸어요!'}`}
         </div></div>
         <div class="tip small"><${Emo} name="Light bulb" size=${22} /><div>${v.m}</div></div>
-        <button class="btn" onClick=${() => { if (!speak(v.text, 'ko-KR', 0.85)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />다시 듣기</button>
+        <div class="row" style="gap:8px"><button class="btn grow" onClick=${() => { if (!speak(v.text, 'ko-KR', 0.85)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />한글 듣기</button><button class="btn grow" onClick=${() => { if (!speak(v.en, 'en-US', 0.8)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />English</button></div>
       `}
     </div>
   <//>`;
