@@ -90,11 +90,11 @@ export function VerseModal({ kid, date, onClose }) {
 
   return html`<${Modal} title="말씀 미션" icon="Open book" onClose=${onClose}>
     <div class="stack bv-modal">
-      <div class="row wrap"><span class="badge" style="background:#FEF3C71A;color:#B45309;background:#FEF3C7">${v.ref}</span><${Reward} n=${3} /><span class="tiny muted">개역한글 · BSB</span></div>
+      <div class="row wrap"><span class="badge" style="background:#FEF3C71A;color:#B45309;background:#FEF3C7">${v.ref}</span><${Reward} n=${3} /><span class="tiny muted">개역개정 · ESV</span></div>
 
       ${step === 'read' && html`
         <div class="bv-text">${v.text}</div>
-        <div class="bv-text en"><div class="bv-reflab">${v.refEn} · BSB</div>${v.en}</div>
+        <div class="bv-text en"><div class="bv-reflab">${v.refEn} · ESV</div>${v.en}</div>
         <div class="tip small"><${Emo} name="Light bulb" size=${22} /><div>${v.m}</div></div>
         <div class="row wrap" style="gap:8px">
           <button class="btn" onClick=${() => { if (!speak(v.text, 'ko-KR', 0.85)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />한글</button>
@@ -120,13 +120,14 @@ export function VerseModal({ kid, date, onClose }) {
 
       ${step === 'done' && html`
         <div class="bv-text">${v.text}</div>
-        <div class="bv-text en"><div class="bv-reflab">${v.refEn} · BSB</div>${v.en}</div>
+        <div class="bv-text en"><div class="bv-reflab">${v.refEn} · ESV</div>${v.en}</div>
         <div class="tip small" style="background:var(--good-soft)"><${Emo} name="Glowing star" size=${24} /><div>
           ${done ? html`<b>${hhmm(done.at)}</b>에 암송했어요${done.mistakes ? ` · 틀린 횟수 ${done.mistakes}` : ' · 한 번도 안 틀렸어요!'}` : html`<b>잘 외웠어요!</b> ${mistakes ? `틀린 횟수 ${mistakes}` : '한 번도 안 틀렸어요!'}`}
         </div></div>
         <div class="tip small"><${Emo} name="Light bulb" size=${22} /><div>${v.m}</div></div>
         <div class="row" style="gap:8px"><button class="btn grow" onClick=${() => { if (!speak(v.text, 'ko-KR', 0.85)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />한글 듣기</button><button class="btn grow" onClick=${() => { if (!speak(v.en, 'en-US', 0.8)) toast('이 기기에서는 읽어 주기가 안 돼요', 'Thinking face'); }}><${Icon} name="volume-2" size=${18} />English</button></div>
       `}
+      <div class="bv-copy">성경전서 개역개정판 © 대한성서공회 · ESV® Bible © Crossway. Used by permission.</div>
     </div>
   <//>`;
 }
