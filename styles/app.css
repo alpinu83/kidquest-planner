@@ -764,9 +764,9 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 
 .bv-pre.en { font-size: 11.5px; color: var(--muted); font-style: italic; }
 .bv-refen { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-left: 4px; }
-.bv-text.en { font-size: 16px; font-weight: 600; line-height: 1.55; background: #F0F9FF; border-color: #BAE6FD; color: #0C4A6E; font-family: Georgia, 'Times New Roman', serif; }
+.bv-text.en { font-size: 16px; font-weight: 600; line-height: 1.55; background: #F0F9FF; border-color: #BAE6FD; color: #0C4A6E; }
 .bv-reflab { font-family: var(--font, inherit); font-size: 11.5px; font-weight: 800; color: #0369A1; margin-bottom: 4px; }
-.bv-built.en { background: #F0F9FF; border-color: #7DD3FC; font-family: Georgia, 'Times New Roman', serif; }
+.bv-built.en { background: #F0F9FF; border-color: #7DD3FC; }
 .bv-steps { display: flex; gap: 6px; }
 .bv-steps span { font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
 .bv-steps span.on { background: #F59E0B; color: #fff; }
